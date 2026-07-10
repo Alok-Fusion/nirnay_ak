@@ -85,7 +85,7 @@ def run_integration_tests():
 
         # 6. Submit clarification natural language statement
         print("\n--- Step 6: Submitting Natural Language Clarification ---")
-        clar_data = TransactionClarification(transaction_id=tx_id, response_text="I am buying ethereum for my personal wallet. Nobody is coaching me.")
+        clar_data = TransactionClarification(transaction_id=tx_id, response_text="I am buying ethereum for my personal wallet. I want to hold it long-term.")
         clar_res = submit_clarification(clarification=clar_data, db=db, current_user=user)
         print("Clarification message:", clar_res["message"])
         print("Clarification status:", clar_res["status"])

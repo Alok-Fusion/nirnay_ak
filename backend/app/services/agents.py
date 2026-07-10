@@ -99,20 +99,35 @@ class PolicyAgent:
 
     def evaluate_scam_intent(self, response_text: str, recipient_name: str) -> dict:
         """Calls Groq to analyze the natural language response for social engineering indicators."""
-        fallback_res = {"is_compromised": False, "confidence": 1.0, "explanation": "Offline template analysis."}
+        # 1. Establish local heuristic check parameters
+        scam_keywords = [
+            "scam", "fraud", "coach", "coached", "coaching", "police", "agent", "support", 
+            "caller", "called me", "anydesk", "teamviewer", "remote", "refund", 
+            "secure account", "safe account", "transfer money", "hack", "compromised",
+            "threat", "coerced", "forced", "court", "irs", "fbi", "official told me",
+            "tech support", "microsoft support", "block", "scammed", "suspended"
+        ]
+        lowered = response_text.lower()
+        heuristic_compromised = False
+        heuristic_explanation = ""
         
+        for kw in scam_keywords:
+            if kw in lowered:
+                heuristic_compromised = True
+                heuristic_explanation = f"Heuristic match: statement contains indicator '{kw}' linked to coercion/scams."
+                break
+
+        # If Groq is not configured, run heuristics immediately
         if not settings.GROQ_API_KEY:
-            # Local heuristic check if no Groq API Key is configured
-            indicators = ["remote", "anydesk", "teamviewer", "helpdesk", "refund", "support called", "police told me", "secure account", "agent asked"]
-            lowered = response_text.lower()
-            if any(ind in lowered for ind in indicators):
+            if heuristic_compromised:
                 return {
                     "is_compromised": True,
-                    "confidence": 0.85,
-                    "explanation": "Heuristic match: customer statement contains keywords indicative of tech support or remote access coercion."
+                    "confidence": 0.90,
+                    "explanation": heuristic_explanation
                 }
-            return fallback_res
+            return {"is_compromised": False, "confidence": 1.0, "explanation": "Offline analysis: No indicators triggered."}
 
+        # 2. Run LLM request via Groq
         system_prompt = (
             "You are the Policy Agent of NIRNAY. Analyze the user's statement explaining their transaction intent. "
             "Determine if the user is showing indicators of being manipulated, scammed, or coached under social engineering. "
@@ -133,8 +148,14 @@ class PolicyAgent:
             res_dict = json.loads(response.strip())
             return res_dict
         except Exception:
-            print("Failed to parse Groq response as JSON. Fallback to heuristics.")
-            return fallback_res
+            print("Failed to parse Groq response as JSON. Falling back to local heuristics.")
+            if heuristic_compromised:
+                return {
+                    "is_compromised": True,
+                    "confidence": 0.85,
+                    "explanation": f"LLM offline fallback - {heuristic_explanation}"
+                }
+            return {"is_compromised": False, "confidence": 1.0, "explanation": "LLM offline fallback: No indicators found."}
 
 class ConversationAgent:
     def execute(self, risk_score: float, triggered_rules: list, recipient_name: str) -> dict:
