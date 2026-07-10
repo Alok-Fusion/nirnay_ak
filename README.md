@@ -57,11 +57,28 @@ Deterministic Rules (rule_engine.py)                 Explainable ML Risk (ml_eng
    ```bash
    cd backend
    ```
-2. Install dependencies:
+2. Create a virtual environment:
+   ```bash
+   python -m venv venv
+   ```
+3. Activate the virtual environment:
+   - On Windows (PowerShell):
+     ```powershell
+     .\venv\Scripts\Activate.ps1
+     ```
+   - On Windows (CMD):
+     ```cmd
+     .\venv\Scripts\activate.bat
+     ```
+   - On macOS/Linux:
+     ```bash
+     source venv/bin/activate
+     ```
+4. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-3. Run the development server:
+5. Run the development server:
    ```bash
    python run.py
    ```

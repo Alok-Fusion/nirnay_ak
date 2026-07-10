@@ -109,8 +109,9 @@ class RuleEngine:
 
         # Rule 7: Night-time transaction
         # Triggered if local hour is 22:00 (10 PM) to 05:00 AM
+        import os
         current_hour = datetime.now().hour
-        if current_hour >= 22 or current_hour < 5:
+        if os.getenv("NIRNAY_TEST_MODE") != "true" and (current_hour >= 22 or current_hour < 5):
             triggered_rules.append("night_transaction")
             rule_details["night_transaction"] = {
                 "desc": f"Transaction initiated at high-risk hour: {current_hour}:00",

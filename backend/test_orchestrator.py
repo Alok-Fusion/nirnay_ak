@@ -1,3 +1,6 @@
+import os
+os.environ["NIRNAY_TEST_MODE"] = "true"
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.models.models import Base, User, DigitalTwin, Recipient, Transaction

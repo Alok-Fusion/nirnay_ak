@@ -13,9 +13,17 @@ def main():
     print("=" * 60)
     print("Starting FastAPI Backend (Port 8000)...")
     
+    # Detect virtual environment python
+    venv_python = os.path.join(backend_dir, "venv", "Scripts", "python.exe")
+    if not os.path.exists(venv_python):
+        venv_python = os.path.join(backend_dir, "venv", "bin", "python")
+        
+    python_exe = venv_python if os.path.exists(venv_python) else sys.executable
+    print(f"Using Python interpreter: {python_exe}")
+
     # Launch Backend
     backend_process = subprocess.Popen(
-        [sys.executable, "run.py"],
+        [python_exe, "run.py"],
         cwd=backend_dir,
         shell=True
     )
