@@ -457,7 +457,7 @@ const AppContent: React.FC = () => {
         <div className="sidebar-footer">
           <div className="user-quick-profile">
             <span className="user-quick-name">{user.username}</span>
-            <span className="user-quick-score">Safety score: {user.security_score}%</span>
+            <span className="user-quick-score">Safety score: {dashSummary?.security_score ?? user.security_score}%</span>
             <button onClick={logout} className="logout-btn" style={{marginTop: '0.75rem', width: '100%'}}>
               <LogOut className="menu-icon" style={{display:'inline', verticalAlign:'middle', marginRight:'0.3rem'}} /> Logout
             </button>
@@ -477,7 +477,7 @@ const AppContent: React.FC = () => {
                 <p className="page-subtitle">Personalised Neo-banking overview and autonomous AI intervention timeline</p>
               </div>
               <div className="user-score" title="Behavioral Integrity Rating">
-                Security Integrity: <strong>{user.security_score}%</strong>
+                Security Integrity: <strong>{dashSummary?.security_score ?? user.security_score}%</strong>
               </div>
             </header>
 
@@ -486,7 +486,7 @@ const AppContent: React.FC = () => {
               <div className="grid-row-3">
                 <div className="glass-card">
                   <h3>Available Balance</h3>
-                  <p className="summary-stat-val">${user.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                  <p className="summary-stat-val">${(dashSummary?.balance ?? user.balance).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                   <p className="summary-stat-desc">Deducted only after active transaction clearance</p>
                 </div>
                 
