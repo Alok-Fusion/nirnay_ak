@@ -92,6 +92,7 @@ export const api = {
   dashboard: {
     summary: () => request<any>('/dashboard/summary'),
     digitalTwin: () => request<any>('/dashboard/digital-twin'),
+    analytics: () => request<any>('/dashboard/analytics'),
   },
 
   // Admin API

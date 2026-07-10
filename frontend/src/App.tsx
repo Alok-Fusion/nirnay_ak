@@ -117,6 +117,12 @@ const AppContent: React.FC = () => {
     enabled: !!user,
   });
 
+  const { data: analyticsData, refetch: refetchAnalytics } = useQuery({
+    queryKey: ['analytics'],
+    queryFn: api.dashboard.analytics,
+    enabled: !!user,
+  });
+
   const { data: activeAudit, isLoading: isAuditLoading, isError: isAuditError } = useQuery({
     queryKey: ['activeAudit', auditTxId],
     queryFn: () => api.transactions.getAuditLog(auditTxId!),
@@ -139,7 +145,7 @@ const AppContent: React.FC = () => {
     mutationFn: api.admin.override,
     onSuccess: () => {
       refetchAdmin();
-      refetchDash();
+      refetchDash(); refetchAnalytics();
       refetchTxs();
       refreshUser();
     },
@@ -170,7 +176,7 @@ const AppContent: React.FC = () => {
       } else {
         await login({ username, password });
       }
-      refetchDash();
+      refetchDash(); refetchAnalytics();
       refetchTwin();
       refetchRecipients();
       refetchTxs();
@@ -237,7 +243,7 @@ const AppContent: React.FC = () => {
       if (initResponse.status === 'APPROVED') {
         setVisualizerStep('completed');
         // Refresh balance & histories
-        refetchDash();
+        refetchDash(); refetchAnalytics();
         refetchTxs();
         refetchTwin();
         refreshUser();
@@ -245,7 +251,7 @@ const AppContent: React.FC = () => {
         setSelectedRecipientId('');
       } else if (initResponse.status === 'BLOCKED') {
         setVisualizerStep('blocked');
-        refetchDash();
+        refetchDash(); refetchAnalytics();
         refetchTxs();
       } else {
         // Challenged status
@@ -274,7 +280,7 @@ const AppContent: React.FC = () => {
 
       if (response.status === 'APPROVED') {
         setVisualizerStep('completed');
-        refetchDash();
+        refetchDash(); refetchAnalytics();
         refetchTxs();
         refetchTwin();
         refreshUser();
@@ -307,7 +313,7 @@ const AppContent: React.FC = () => {
 
       if (response.status === 'APPROVED') {
         setVisualizerStep('completed');
-        refetchDash();
+        refetchDash(); refetchAnalytics();
         refetchTxs();
         refetchTwin();
         refreshUser();
@@ -315,7 +321,7 @@ const AppContent: React.FC = () => {
         setSelectedRecipientId('');
       } else if (response.status === 'BLOCKED') {
         setVisualizerStep('blocked');
-        refetchDash();
+        refetchDash(); refetchAnalytics();
         refetchTxs();
         setChallengeError(response.message || 'Transaction suspended by AI security policies.');
       } else {
@@ -796,64 +802,190 @@ const AppContent: React.FC = () => {
             <header className="page-header">
               <div>
                 <h1 className="page-title">Risk & Fraud Analytics</h1>
-                <p className="page-subtitle">Aggregated metrics showcasing decision intelligence performance indicators</p>
+                <p className="page-subtitle">Live metrics computed from your transaction history and AI decision outcomes</p>
               </div>
             </header>
 
             <div className="page-content">
-              <div className="grid-row-2">
-                {/* SVG Spending Category Chart */}
-                <div className="glass-card">
-                  <div className="card-header">
-                    <h2 className="card-title">Transfer Outflow Categories</h2>
-                  </div>
-                  <div style={{display:'flex', justifyContent:'center', padding:'1rem'}}>
-                    {/* SVG Donut Chart */}
-                    <svg width="240" height="240" viewBox="0 0 42 42">
-                      <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--border-color)" strokeWidth="4"></circle>
-                      {/* Family Transfer (Sarah/Aarav): 60% */}
-                      <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--primary)" strokeWidth="4" strokeDasharray="60 40" strokeDashoffset="25"></circle>
-                      {/* Rent (Priya): 25% */}
-                      <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--secondary)" strokeWidth="4" strokeDasharray="25 75" strokeDashoffset="65"></circle>
-                      {/* Crypto OTC: 15% */}
-                      <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--warning)" strokeWidth="4" strokeDasharray="15 85" strokeDashoffset="40"></circle>
-                      
-                      <g className="chart-text">
-                        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" fill="#fff" fontSize="5" fontWeight="700">Outflow</text>
-                      </g>
-                    </svg>
-                  </div>
-                  <div style={{display:'flex', justifyContent:'space-around', fontSize:'0.85rem', marginTop:'1rem'}}>
-                    <span><span style={{color:'var(--primary)'}}>●</span> Sibling/Wife (60%)</span>
-                    <span><span style={{color:'var(--secondary)'}}>●</span> Rent (25%)</span>
-                    <span><span style={{color:'var(--warning)'}}>●</span> Crypto buy (15%)</span>
-                  </div>
+              {!analyticsData || analyticsData.total_transactions === 0 ? (
+                <div className="glass-card" style={{textAlign: 'center', padding: '3rem'}}>
+                  <p style={{color: 'var(--text-muted)', fontSize: '1.05rem', marginBottom: '0.5rem'}}>No Analytics Data Available</p>
+                  <p style={{color: 'var(--text-secondary)', fontSize: '0.85rem'}}>Complete your first transaction to see live risk analytics, category breakdowns, and AI intervention metrics here.</p>
                 </div>
+              ) : (
+                <>
+                  {/* Top Stats Row */}
+                  <div className="grid-row-3" style={{marginBottom: '1.5rem'}}>
+                    <div className="glass-card">
+                      <h3>Total Transactions</h3>
+                      <p className="summary-stat-val">{analyticsData.total_transactions}</p>
+                      <p className="summary-stat-desc">
+                        {analyticsData.approved_count} approved · {analyticsData.challenged_count} challenged · {analyticsData.blocked_count} blocked
+                      </p>
+                    </div>
+                    <div className="glass-card">
+                      <h3>Total Volume Processed</h3>
+                      <p className="summary-stat-val">${analyticsData.total_volume.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                      <p className="summary-stat-desc">Aggregate outflow across all recipients</p>
+                    </div>
+                    <div className="glass-card">
+                      <h3>Average Risk Score</h3>
+                      <p className="summary-stat-val" style={{
+                        color: analyticsData.avg_risk_score > 50 ? 'var(--danger)' : analyticsData.avg_risk_score > 20 ? 'var(--warning)' : 'var(--success)'
+                      }}>{analyticsData.avg_risk_score}%</p>
+                      <p className="summary-stat-desc">Peak: {analyticsData.max_risk_score}%</p>
+                    </div>
+                  </div>
 
-                {/* SVG Risk trends charts */}
-                <div className="glass-card">
-                  <div className="card-header">
-                    <h2 className="card-title">Intervention Rates (Past 15 days)</h2>
+                  <div className="grid-row-2">
+                    {/* Category Donut - Dynamic SVG */}
+                    <div className="glass-card">
+                      <div className="card-header">
+                        <h2 className="card-title">Transfer Outflow Categories</h2>
+                      </div>
+                      <div style={{display:'flex', justifyContent:'center', padding:'1rem'}}>
+                        <svg width="240" height="240" viewBox="0 0 42 42">
+                          <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--border-color)" strokeWidth="4"></circle>
+                          {(() => {
+                            const colors = ['var(--primary)', 'var(--secondary)', 'var(--warning)', 'var(--danger)', '#10b981', '#f472b6'];
+                            let offset = 25;
+                            return analyticsData.category_breakdown.slice(0, 6).map((cat: any, i: number) => {
+                              const el = (
+                                <circle key={cat.name} cx="21" cy="21" r="15.915" fill="transparent"
+                                  stroke={colors[i % colors.length]} strokeWidth="4"
+                                  strokeDasharray={`${cat.percentage} ${100 - cat.percentage}`}
+                                  strokeDashoffset={offset}
+                                />
+                              );
+                              offset -= cat.percentage;
+                              return el;
+                            });
+                          })()}
+                          <g className="chart-text">
+                            <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" fill="#fff" fontSize="5" fontWeight="700">Outflow</text>
+                          </g>
+                        </svg>
+                      </div>
+                      <div style={{display:'flex', flexDirection:'column', gap:'0.4rem', fontSize:'0.85rem', padding:'0 1rem 1rem'}}>
+                        {(() => {
+                          const colors = ['var(--primary)', 'var(--secondary)', 'var(--warning)', 'var(--danger)', '#10b981', '#f472b6'];
+                          return analyticsData.category_breakdown.slice(0, 6).map((cat: any, i: number) => (
+                            <div key={cat.name} style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                              <span><span style={{color: colors[i % colors.length]}}>●</span> {cat.name}</span>
+                              <span style={{color:'var(--text-muted)'}}>{cat.percentage}% · ${cat.amount.toLocaleString()}</span>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Risk Timeline - Dynamic SVG */}
+                    <div className="glass-card">
+                      <div className="card-header">
+                        <h2 className="card-title">Risk Score Timeline</h2>
+                      </div>
+                      <div style={{padding:'1rem'}}>
+                        <svg width="100%" height="180" viewBox="0 0 400 170">
+                          {/* Grid lines */}
+                          <line x1="30" y1="20" x2="390" y2="20" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+                          <line x1="30" y1="55" x2="390" y2="55" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+                          <line x1="30" y1="90" x2="390" y2="90" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+                          <line x1="30" y1="125" x2="390" y2="125" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+                          {/* Y-axis labels */}
+                          <text x="5" y="22" fill="var(--text-muted)" fontSize="7">100</text>
+                          <text x="10" y="57" fill="var(--text-muted)" fontSize="7">75</text>
+                          <text x="10" y="92" fill="var(--text-muted)" fontSize="7">50</text>
+                          <text x="10" y="127" fill="var(--text-muted)" fontSize="7">25</text>
+                          <text x="15" y="157" fill="var(--text-muted)" fontSize="7">0</text>
+                          {/* Baseline */}
+                          <line x1="30" y1="155" x2="390" y2="155" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+                          
+                          {/* Dynamic points and lines */}
+                          {(() => {
+                            const timeline = analyticsData.risk_timeline;
+                            if (timeline.length === 0) return null;
+                            const xStep = timeline.length > 1 ? 350 / (timeline.length - 1) : 0;
+                            const points = timeline.map((pt: any, i: number) => ({
+                              x: 35 + i * xStep,
+                              y: 155 - (pt.risk_score / 100) * 135,
+                              risk: pt.risk_score,
+                              status: pt.status,
+                            }));
+                            const pathD = points.map((p: any, i: number) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                            const areaD = pathD + ` L ${points[points.length-1].x} 155 L ${points[0].x} 155 Z`;
+                            
+                            return (
+                              <>
+                                <path d={areaD} fill="rgba(99, 102, 241, 0.08)" />
+                                <path d={pathD} fill="transparent" stroke="var(--primary)" strokeWidth="2.5" strokeLinejoin="round" />
+                                {points.map((p: any, i: number) => (
+                                  <g key={i}>
+                                    <circle cx={p.x} cy={p.y} r="4"
+                                      fill={p.status === 'BLOCKED' ? 'var(--danger)' : p.status === 'CHALLENGED' ? 'var(--warning)' : 'var(--success)'}
+                                      stroke="rgba(0,0,0,0.3)" strokeWidth="1"
+                                    />
+                                    <text x={p.x} y={p.y - 8} fill="#fff" fontSize="6.5" textAnchor="middle" fontWeight="600">
+                                      {p.risk}%
+                                    </text>
+                                  </g>
+                                ))}
+                              </>
+                            );
+                          })()}
+                        </svg>
+                      </div>
+                      <div style={{display:'flex', justifyContent:'center', gap:'1.5rem', fontSize:'0.8rem', paddingBottom:'1rem'}}>
+                        <span><span style={{color:'var(--success)'}}>●</span> Approved</span>
+                        <span><span style={{color:'var(--warning)'}}>●</span> Challenged</span>
+                        <span><span style={{color:'var(--danger)'}}>●</span> Blocked</span>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{padding:'1rem'}}>
-                    <svg width="100%" height="160" viewBox="0 0 400 150">
-                      {/* Grid lines */}
-                      <line x1="10" y1="20" x2="390" y2="20" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
-                      <line x1="10" y1="70" x2="390" y2="70" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
-                      <line x1="10" y1="120" x2="390" y2="120" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
-                      
-                      {/* Trend Area */}
-                      <path d="M 10 120 Q 100 80, 200 40 T 390 120" fill="rgba(99, 102, 241, 0.05)" />
-                      {/* Trend line */}
-                      <path d="M 10 120 Q 100 80, 200 40 T 390 120" fill="transparent" stroke="var(--primary)" strokeWidth="3" />
-                      
-                      <circle cx="200" cy="40" r="4" fill="var(--secondary)" />
-                      <text x="200" y="30" fill="#fff" fontSize="8" textAnchor="middle">Scam Alert Peak</text>
-                    </svg>
+
+                  {/* Status Distribution Bar */}
+                  <div className="glass-card" style={{marginTop: '1.5rem'}}>
+                    <div className="card-header">
+                      <h2 className="card-title">AI Decision Distribution</h2>
+                    </div>
+                    <div style={{padding: '1.5rem'}}>
+                      <div style={{display: 'flex', height: '28px', borderRadius: '8px', overflow: 'hidden', marginBottom: '1rem'}}>
+                        {analyticsData.approved_count > 0 && (
+                          <div style={{
+                            width: `${(analyticsData.approved_count / analyticsData.total_transactions) * 100}%`,
+                            backgroundColor: 'var(--success)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.75rem', fontWeight: 700, color: '#000',
+                            transition: 'width 0.6s ease'
+                          }}>{analyticsData.approved_count}</div>
+                        )}
+                        {analyticsData.challenged_count > 0 && (
+                          <div style={{
+                            width: `${(analyticsData.challenged_count / analyticsData.total_transactions) * 100}%`,
+                            backgroundColor: 'var(--warning)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.75rem', fontWeight: 700, color: '#000',
+                            transition: 'width 0.6s ease'
+                          }}>{analyticsData.challenged_count}</div>
+                        )}
+                        {analyticsData.blocked_count > 0 && (
+                          <div style={{
+                            width: `${(analyticsData.blocked_count / analyticsData.total_transactions) * 100}%`,
+                            backgroundColor: 'var(--danger)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.75rem', fontWeight: 700, color: '#fff',
+                            transition: 'width 0.6s ease'
+                          }}>{analyticsData.blocked_count}</div>
+                        )}
+                      </div>
+                      <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.85rem'}}>
+                        <span style={{color:'var(--success)'}}>✓ Approved: {((analyticsData.approved_count / analyticsData.total_transactions) * 100).toFixed(1)}%</span>
+                        <span style={{color:'var(--warning)'}}>⚠ Challenged: {((analyticsData.challenged_count / analyticsData.total_transactions) * 100).toFixed(1)}%</span>
+                        <span style={{color:'var(--danger)'}}>✕ Blocked: {((analyticsData.blocked_count / analyticsData.total_transactions) * 100).toFixed(1)}%</span>
+                      </div>
+                    </div>
                   </div>
-                  <p className="summary-stat-desc" style={{textAlign:'center', marginTop:'0.5rem'}}>NIRNAY decreased overall chargebacks by 94.2% since integration</p>
-                </div>
-              </div>
+                </>
+              )}
             </div>
           </>
         )}
@@ -1316,3 +1448,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
