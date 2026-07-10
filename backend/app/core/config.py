@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     # SQLite local DB file
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./nirnay.db")
     
+    # Groq API configurations
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama3-8b-8192")
+    
     class Config:
         case_sensitive = True
 

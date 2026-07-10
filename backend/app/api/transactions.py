@@ -5,6 +5,7 @@ from app.api.deps import get_current_user
 from app.models.models import User, Transaction, AuditLog
 from app.schemas.schemas import TransactionInitiate, TransactionOut, TransactionAuthChallenge, TransactionClarification
 from app.services.orchestrator import TransactionOrchestrator
+from app.services.agents import PolicyAgent
 from app.services.digital_twin import DigitalTwinService
 from app.core.security import verify_password
 from typing import List
@@ -179,7 +180,14 @@ def submit_clarification(
     db.add(tx)
     db.commit()
 
-    # Append response details to agent logs
+    # 1. Run LLM Scam/Social Engineering check via Policy Agent
+    policy_agent = PolicyAgent()
+    scam_check = policy_agent.evaluate_scam_intent(clarification.response_text, tx.recipient.name)
+    
+    is_compromised = scam_check.get("is_compromised", False)
+    scam_explanation = scam_check.get("explanation", "Scam indicators detected.")
+
+    # Append response and scan details to agent logs
     audit_log = db.query(AuditLog).filter(AuditLog.transaction_id == tx.id).first()
     if audit_log:
         logs = json.loads(audit_log.agent_logs or "[]")
@@ -188,9 +196,37 @@ def submit_clarification(
             "action": "Clarification Received",
             "message": f"User confirmed transaction intent: '{clarification.response_text}'"
         })
+        logs.append({
+            "agent": "Policy Agent",
+            "action": "Social Engineering Scan",
+            "message": f"LLM scam assessment (compromised={is_compromised}, confidence={scam_check.get('confidence', 1.0)}): {scam_explanation}"
+        })
         audit_log.agent_logs = json.dumps(logs)
         db.add(audit_log)
         db.commit()
+
+    # If social engineering is detected, block transaction immediately
+    if is_compromised:
+        tx.status = "BLOCKED"
+        db.add(tx)
+        db.commit()
+        
+        if audit_log:
+            logs = json.loads(audit_log.agent_logs or "[]")
+            logs.append({
+                "agent": "Decision Engine",
+                "action": "Auto Block Override",
+                "message": "Transaction rejected: Policy Agent flagged critical social engineering risk."
+            })
+            audit_log.agent_logs = json.dumps(logs)
+            audit_log.decision = "BLOCKED"
+            db.add(audit_log)
+            db.commit()
+            
+        return {
+            "message": f"Security Warning: Transaction blocked by AI Policy Agent. Reason: {scam_explanation}",
+            "status": "BLOCKED"
+        }
 
     # Check if they have also completed authentication factors
     required_steps = tx.auth_steps_required.split(",")

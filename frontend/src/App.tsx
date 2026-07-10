@@ -313,6 +313,11 @@ const AppContent: React.FC = () => {
         refreshUser();
         setTransferAmount('');
         setSelectedRecipientId('');
+      } else if (response.status === 'BLOCKED') {
+        setVisualizerStep('blocked');
+        refetchDash();
+        refetchTxs();
+        setChallengeError(response.message || 'Transaction suspended by AI security policies.');
       } else {
         // Clarified, but awaiting MPIN/OTP factors
       }
