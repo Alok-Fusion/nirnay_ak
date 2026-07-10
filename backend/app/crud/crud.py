@@ -127,6 +127,18 @@ def seed_mock_history(db: Session, user_id: int):
         decision="CHALLENGE", execution_time_ms=210
     )
     
+    a3 = AuditLog(
+        transaction_id=t3.id, user_id=user_id, timestamp=t3.timestamp,
+        ml_features=json.dumps({"amount": 8500, "dev_ratio": 0.5, "location_match": 1, "device_match": 1}),
+        rule_triggers=json.dumps([]),
+        agent_logs=json.dumps([
+            {"agent": "Context", "action": "Fetched user profile. Recipient Aarav Sharma trust score: 98.0."},
+            {"agent": "Policy", "action": "Deterministic check: Small transaction, trusted family recipient. Bypassed extra checks."},
+            {"agent": "Decision", "action": "Transaction fast-tracked and approved immediately."}
+        ]),
+        decision="APPROVED", execution_time_ms=90
+    )
+    
     a4 = AuditLog(
         transaction_id=t4.id, user_id=user_id, timestamp=t4.timestamp,
         ml_features=json.dumps({"amount": 95000, "dev_ratio": 2.5, "location_match": 1, "device_match": 1}),
@@ -139,7 +151,7 @@ def seed_mock_history(db: Session, user_id: int):
         ]),
         decision="CHALLENGE", execution_time_ms=450
     )
-    db.add_all([a1, a2, a4])
+    db.add_all([a1, a2, a3, a4])
     db.commit()
 
     # 4. Update the Digital Twin with historical averages

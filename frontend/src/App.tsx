@@ -117,7 +117,7 @@ const AppContent: React.FC = () => {
     enabled: !!user,
   });
 
-  const { data: activeAudit } = useQuery({
+  const { data: activeAudit, isLoading: isAuditLoading, isError: isAuditError } = useQuery({
     queryKey: ['activeAudit', auditTxId],
     queryFn: () => api.transactions.getAuditLog(auditTxId!),
     enabled: !!user && auditTxId !== null,
@@ -1177,97 +1177,126 @@ const AppContent: React.FC = () => {
       )}
 
       {/* MODAL 2: Historical Transaction AI Audit Details Viewer */}
-      {auditModalOpen && activeAudit && (
+      {auditModalOpen && (
         <div className="orchestrator-overlay">
           <div className="orchestrator-modal" style={{maxWidth:'640px'}}>
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '1.5rem'}}>
               <h2 style={{color:'#fff'}}>Transaction Audit Timeline</h2>
               <button onClick={() => setAuditModalOpen(false)} style={{background:'none', border:'none', color: 'var(--text-muted)', cursor:'pointer'}}>
                 <X className="menu-icon" />
               </button>
             </div>
 
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem', backgroundColor:'rgba(255,255,255,0.02)', padding:'1rem', borderRadius:'8px', fontSize:'0.85rem'}}>
-              <div>
-                <span style={{color: 'var(--text-muted)'}}>AMOUNT</span>
-                <p style={{color:'#fff', fontWeight:600, fontSize:'1.1rem'}}>${activeAudit.amount?.toLocaleString()}</p>
+            {isAuditLoading ? (
+              <div style={{textAlign: 'center', padding: '3rem'}}>
+                <div style={{
+                  margin: '0 auto 1.5rem',
+                  border: '3px solid rgba(255,255,255,0.1)',
+                  borderTop: '3px solid var(--primary)',
+                  borderRadius: '50%',
+                  width: '40px',
+                  height: '40px',
+                  animation: 'spin 1s linear infinite'
+                }}></div>
+                <style>{`
+                  @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                  }
+                `}</style>
+                <p style={{color: 'var(--text-muted)', fontSize: '0.9rem'}}>Retrieving security consensus logs...</p>
               </div>
-              <div>
-                <span style={{color: 'var(--text-muted)'}}>RISK RATING</span>
-                <p style={{
-                  color: activeAudit.risk_score > 60 ? 'var(--danger)' : activeAudit.risk_score > 25 ? 'var(--warning)' : 'var(--success)',
-                  fontWeight: 700,
-                  fontSize: '1.1rem'
-                }}>{activeAudit.risk_score}%</p>
+            ) : isAuditError || !activeAudit ? (
+              <div style={{textAlign: 'center', padding: '2rem'}}>
+                <p style={{color: 'var(--danger)', fontWeight: 600, marginBottom: '0.75rem', fontSize: '1.05rem'}}>AI Audit Log Not Found</p>
+                <p style={{fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.4'}}>
+                  No decision trail is registered for this transaction. This usually occurs for external historical records or bypassed checks.
+                </p>
               </div>
-              <div>
-                <span style={{color: 'var(--text-muted)'}}>LATENCY</span>
-                <p style={{color:'#fff'}}>{activeAudit.execution_time_ms} ms</p>
-              </div>
-              <div>
-                <span style={{color: 'var(--text-muted)'}}>STATUS</span>
-                <p><span className={`status-badge ${activeAudit.status?.toLowerCase()}`}>{activeAudit.status}</span></p>
-              </div>
-            </div>
+            ) : (
+              <div style={{display: 'flex', flexDirection: 'column', gap: '1.25rem'}}>
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem', backgroundColor:'rgba(255,255,255,0.02)', padding:'1rem', borderRadius:'8px', fontSize:'0.85rem'}}>
+                  <div>
+                    <span style={{color: 'var(--text-muted)'}}>AMOUNT</span>
+                    <p style={{color:'#fff', fontWeight:600, fontSize:'1.1rem'}}>${activeAudit.amount?.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span style={{color: 'var(--text-muted)'}}>RISK RATING</span>
+                    <p style={{
+                      color: activeAudit.risk_score > 60 ? 'var(--danger)' : activeAudit.risk_score > 25 ? 'var(--warning)' : 'var(--success)',
+                      fontWeight: 700,
+                      fontSize: '1.1rem'
+                    }}>{activeAudit.risk_score}%</p>
+                  </div>
+                  <div>
+                    <span style={{color: 'var(--text-muted)'}}>LATENCY</span>
+                    <p style={{color:'#fff'}}>{activeAudit.execution_time_ms} ms</p>
+                  </div>
+                  <div>
+                    <span style={{color: 'var(--text-muted)'}}>STATUS</span>
+                    <p><span className={`status-badge ${activeAudit.status?.toLowerCase()}`}>{activeAudit.status}</span></p>
+                  </div>
+                </div>
 
-            {/* Audit Triggered Rules */}
-            {activeAudit.rule_triggers?.length > 0 && (
-              <div>
-                <h4 style={{color:'#fff', fontSize:'0.9rem', marginBottom:'0.5rem'}}>Triggered Rules</h4>
-                <div style={{display:'flex', gap:'0.4rem', flexWrap:'wrap'}}>
-                  {activeAudit.rule_triggers.map((rule: string) => (
-                    <span key={rule} style={{fontSize:'0.7rem', padding:'0.2rem 0.5rem', backgroundColor: 'var(--danger-bg)', border: '1px solid var(--danger-border)', color: 'var(--danger)', borderRadius:'4px'}}>
-                      {rule.toUpperCase().replace(/_/g, ' ')}
-                    </span>
-                  ))}
+                {/* Audit Triggered Rules */}
+                {activeAudit.rule_triggers?.length > 0 && (
+                  <div>
+                    <h4 style={{color:'#fff', fontSize:'0.9rem', marginBottom:'0.5rem'}}>Triggered Rules</h4>
+                    <div style={{display:'flex', gap:'0.4rem', flexWrap:'wrap'}}>
+                      {activeAudit.rule_triggers.map((rule: string) => (
+                        <span key={rule} style={{fontSize:'0.7rem', padding:'0.2rem 0.5rem', backgroundColor: 'var(--danger-bg)', border: '1px solid var(--danger-border)', color: 'var(--danger)', borderRadius:'4px'}}>
+                          {rule.toUpperCase().replace(/_/g, ' ')}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Audit SHAP Chart */}
+                <div className="shap-container" style={{padding:'1rem'}}>
+                  <div className="shap-header" style={{marginBottom:'0.5rem'}}>
+                    <span>SHAP Values Explanation</span>
+                  </div>
+                  <div className="shap-chart" style={{gap:'0.5rem'}}>
+                    {Object.entries(activeAudit.shap_values || {}).map(([feature, val]: [string, any]) => (
+                      <div className="shap-row" style={{gridTemplateColumns:'120px 1fr 50px'}} key={feature}>
+                        <span className="shap-feature" style={{fontSize:'0.75rem'}}>{feature}</span>
+                        <div className="shap-bar-wrapper" style={{height:'12px'}}>
+                          <div 
+                            className={`shap-bar ${val > 0 ? 'positive' : 'negative'}`}
+                            style={{
+                              width: `${Math.min(100, Math.abs(val) * 1.8)}%`,
+                            }}
+                          ></div>
+                        </div>
+                        <span className={`shap-val-text ${val > 0 ? 'positive' : 'negative'}`} style={{fontSize:'0.75rem'}}>
+                          {val > 0 ? `+${val}%` : `${val}%`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Audit Agent Timelines */}
+                <div>
+                  <h4 style={{color:'#fff', fontSize:'0.9rem', marginBottom:'0.5rem'}}>Multi-Agent Decision logs</h4>
+                  <div className="agent-logs-timeline">
+                    {activeAudit.agent_logs?.map((log: any, idx: number) => (
+                      <div className="timeline-item" key={idx}>
+                        <div className="timeline-dot" style={{backgroundColor: log.agent?.includes('Admin') ? 'var(--secondary)' : 'var(--primary)'}}></div>
+                        <div className="timeline-content-box" style={{padding:'0.5rem 0.75rem'}}>
+                          <div className="timeline-title" style={{fontSize:'0.75rem'}}>
+                            <span>{log.agent}</span>
+                            <span style={{color: 'var(--text-muted)', fontWeight:400}}>{log.action}</span>
+                          </div>
+                          <p className="timeline-desc" style={{fontSize:'0.8rem'}}>{log.message}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
-
-            {/* Audit SHAP Chart */}
-            <div className="shap-container" style={{padding:'1rem'}}>
-              <div className="shap-header" style={{marginBottom:'0.5rem'}}>
-                <span>SHAP Values Explanation</span>
-              </div>
-              <div className="shap-chart" style={{gap:'0.5rem'}}>
-                {Object.entries(activeAudit.shap_values || {}).map(([feature, val]: [string, any]) => (
-                  <div className="shap-row" style={{gridTemplateColumns:'120px 1fr 50px'}} key={feature}>
-                    <span className="shap-feature" style={{fontSize:'0.75rem'}}>{feature}</span>
-                    <div className="shap-bar-wrapper" style={{height:'12px'}}>
-                      <div 
-                        className={`shap-bar ${val > 0 ? 'positive' : 'negative'}`}
-                        style={{
-                          width: `${Math.min(100, Math.abs(val) * 1.8)}%`,
-                        }}
-                      ></div>
-                    </div>
-                    <span className={`shap-val-text ${val > 0 ? 'positive' : 'negative'}`} style={{fontSize:'0.75rem'}}>
-                      {val > 0 ? `+${val}%` : `${val}%`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Audit Agent Timelines */}
-            <div>
-              <h4 style={{color:'#fff', fontSize:'0.9rem', marginBottom:'0.5rem'}}>Multi-Agent Decision logs</h4>
-              <div className="agent-logs-timeline">
-                {activeAudit.agent_logs?.map((log: any, idx: number) => (
-                  <div className="timeline-item" key={idx}>
-                    <div className="timeline-dot" style={{backgroundColor: log.agent?.includes('Admin') ? 'var(--secondary)' : 'var(--primary)'}}></div>
-                    <div className="timeline-content-box" style={{padding:'0.5rem 0.75rem'}}>
-                      <div className="timeline-title" style={{fontSize:'0.75rem'}}>
-                        <span>{log.agent}</span>
-                        <span style={{color: 'var(--text-muted)', fontWeight:400}}>{log.action}</span>
-                      </div>
-                      <p className="timeline-desc" style={{fontSize:'0.8rem'}}>{log.message}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
           </div>
         </div>
       )}
