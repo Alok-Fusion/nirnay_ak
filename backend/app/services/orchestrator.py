@@ -175,6 +175,7 @@ class TransactionOrchestrator:
             "risk_score": risk_score,
             "triggered_rules": triggered_rules,
             "auth_steps_required": auth_steps_required,
+            "auth_steps_completed": tx.auth_steps_completed,
             "requires_clarification": requires_clarification,
             "clarification_prompt": clarification_prompt,
             "agent_logs": agent_logs,

@@ -21,8 +21,8 @@ def create_user(db: Session, user: UserCreate):
         email=user.email,
         hashed_password=hashed_pwd,
         mpin=user.mpin, # In production this would be hashed, for our interactive demo we verify plain or simple hashed
-        balance=150000.0,  # Start with a good balance for testing
-        security_score=88.0
+        balance=25000.0,  # Fresh starting balance for testing
+        security_score=85.0
     )
     db.add(db_user)
     db.commit()
@@ -42,8 +42,15 @@ def create_user(db: Session, user: UserCreate):
     db.add(db_twin)
     db.commit()
     
-    # Seed mock history to make the UI look premium right away
-    seed_mock_history(db, db_user.id)
+    # Seed mock history only for demo or test accounts to preserve clean dashboards for new registrations
+    is_demo = user.username.lower().startswith("demo") or user.username in ["robert_miller", "alok_kumar", "alex_jones"]
+    if is_demo:
+        # Give demo users a larger balance for transactions
+        db_user.balance = 150000.0
+        db.add(db_user)
+        db.commit()
+        
+        seed_mock_history(db, db_user.id)
     
     return db_user
 

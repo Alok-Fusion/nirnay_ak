@@ -7,6 +7,27 @@ from app.api import auth, recipients, transactions, dashboard, admin
 # Create database tables automatically
 Base.metadata.create_all(bind=engine)
 
+# Seed default demo user on startup if not exists
+from app.core.database import SessionLocal
+from app.crud.crud import get_user_by_username, create_user
+from app.schemas.schemas import UserCreate
+
+db = SessionLocal()
+try:
+    if not get_user_by_username(db, "demo"):
+        demo_user = UserCreate(
+            username="demo",
+            email="demo@bank.com",
+            password="password123",
+            mpin="1234"
+        )
+        create_user(db, demo_user)
+        print("Pre-seeded default demo user created: username='demo', password='password123', mpin='1234'")
+except Exception as e:
+    print(f"Error seeding default database: {e}")
+finally:
+    db.close()
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Enterprise-grade AI-Powered Financial Decision Intelligence Platform",

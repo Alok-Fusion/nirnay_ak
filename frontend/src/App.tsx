@@ -231,8 +231,8 @@ const AppContent: React.FC = () => {
       setOrchTriggeredRules(initResponse.triggered_rules);
       setOrchRequiresClarify(initResponse.requires_clarification);
       setOrchClarifyPrompt(initResponse.clarification_prompt);
-      setOrchAuthStepsRequired(initResponse.auth_steps_required.split(','));
-      setOrchAuthStepsCompleted(initResponse.auth_steps_completed.split(','));
+      setOrchAuthStepsRequired((initResponse.auth_steps_required || 'PASSWORD').split(','));
+      setOrchAuthStepsCompleted((initResponse.auth_steps_completed || 'PASSWORD').split(','));
 
       if (initResponse.status === 'APPROVED') {
         setVisualizerStep('completed');
@@ -523,44 +523,52 @@ const AppContent: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {transactions?.map((tx) => {
-                        const recip = recipients?.find(r => r.id === tx.recipient_id);
-                        return (
-                          <tr key={tx.id}>
-                            <td>
-                              <strong style={{color: '#fff'}}>{recip ? recip.name : `Beneficiary #${tx.recipient_id}`}</strong>
-                              <div style={{fontSize: '0.75rem', color: 'var(--text-muted)'}}>{recip ? recip.bank_name : ''}</div>
-                            </td>
-                            <td>
-                              <div style={{fontSize:'0.85rem'}}>{tx.device}</div>
-                              <div style={{fontSize:'0.75rem', color: 'var(--text-secondary)'}}>{tx.location}</div>
-                            </td>
-                            <td><strong>${tx.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</strong></td>
-                            <td>
-                              <span style={{
-                                color: tx.risk_score > 60 ? 'var(--danger)' : tx.risk_score > 25 ? 'var(--warning)' : 'var(--success)',
-                                fontWeight: 700
-                              }}>{tx.risk_score}%</span>
-                            </td>
-                            <td>
-                              <span className={`status-badge ${tx.status.toLowerCase()}`}>{tx.status}</span>
-                            </td>
-                            <td>{new Date(tx.timestamp).toLocaleDateString()}</td>
-                            <td>
-                              <button 
-                                onClick={() => {
-                                  setAuditTxId(tx.id);
-                                  setAuditModalOpen(true);
-                                }}
-                                className="logout-btn" 
-                                style={{padding: '0.25rem 0.5rem', fontSize: '0.75rem'}}
-                              >
-                                View AI Audit
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {(!transactions || transactions.length === 0) ? (
+                        <tr>
+                          <td colSpan={7} style={{textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)'}}>
+                            No transactions recorded yet. Click "Transfer Funds" in the sidebar to make a secure transaction!
+                          </td>
+                        </tr>
+                      ) : (
+                        transactions.map((tx) => {
+                          const recip = recipients?.find(r => r.id === tx.recipient_id);
+                          return (
+                            <tr key={tx.id}>
+                              <td>
+                                <strong style={{color: '#fff'}}>{recip ? recip.name : `Beneficiary #${tx.recipient_id}`}</strong>
+                                <div style={{fontSize: '0.75rem', color: 'var(--text-muted)'}}>{recip ? recip.bank_name : ''}</div>
+                              </td>
+                              <td>
+                                <div style={{fontSize:'0.85rem'}}>{tx.device}</div>
+                                <div style={{fontSize:'0.75rem', color: 'var(--text-secondary)'}}>{tx.location}</div>
+                              </td>
+                              <td><strong>${tx.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</strong></td>
+                              <td>
+                                <span style={{
+                                  color: tx.risk_score > 60 ? 'var(--danger)' : tx.risk_score > 25 ? 'var(--warning)' : 'var(--success)',
+                                  fontWeight: 700
+                                }}>{tx.risk_score}%</span>
+                              </td>
+                              <td>
+                                <span className={`status-badge ${tx.status.toLowerCase()}`}>{tx.status}</span>
+                              </td>
+                              <td>{new Date(tx.timestamp).toLocaleDateString()}</td>
+                              <td>
+                                <button 
+                                  onClick={() => {
+                                    setAuditTxId(tx.id);
+                                    setAuditModalOpen(true);
+                                  }}
+                                  className="logout-btn" 
+                                  style={{padding: '0.25rem 0.5rem', fontSize: '0.75rem'}}
+                                >
+                                  View AI Audit
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
