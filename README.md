@@ -1,56 +1,85 @@
-# NIRNAY: AI-Powered Financial Decision Intelligence Platform
+# NIRNAY: AI-Protected Neo-Banking & Decision Intelligence Platform
 
-> **Tagline:** Beyond Fraud Detection. Towards Intelligent Financial Decisions.
+> **Tagline:** Beyond Fraud Detection. Towards Autonomous Neo-Banking Security.
 
-NIRNAY is an enterprise-grade AI-powered Financial Decision Intelligence Platform that transforms how digital banking transactions are evaluated, secured, and authorized. 
+NIRNAY is a premium, AI-powered Neo-Banking and Decision Intelligence Platform that redefines how digital transactions are protected, processed, and audited. 
 
-Unlike traditional fraud systems that provide binary outcomes (approve or block), NIRNAY evaluates customer context, validates recipient risk profiles, checks behavioral digital twin deviations, applies banking policy guidelines, runs multi-agent AI reasoning, and triggers adaptive authentication before executing any transaction.
+Unlike traditional banking software or binary fraud systems that approve or block actions based on simple static indicators, NIRNAY evaluates customer behavioral profiles, recipient risk ratings, and compliance rules in real-time. It routes transaction evaluation through a collaborative Multi-Agent AI core, executes adaptive verification challenges, and logs every money movement inside an immutable passbook ledger.
 
 ---
 
-## High-Level Architecture Flow
+## 🏗️ Technical Architecture & Money Flow
 
 ```
-Customer → Initiate Transfer → TransactionOrchestrator
-                                      │
-       ┌──────────────────────────────┴──────────────────────────────┐
-       ▼                                                             ▼
-Deterministic Rules (rule_engine.py)                 Explainable ML Risk (ml_engine.py)
-       │                                                             │
-       └──────────────────────────────┬──────────────────────────────┘
-                                      ▼
-                        LangGraph-style Multi-Agent Core
-                                      │
-                     ┌────────────────┴────────────────┐
-                     ▼                                 ▼
-              Decision Engine                 Adaptive Authentication
-              (APPROVE / BLOCK / CHALLENGE)   (Password -> MPIN -> OTP)
-                                      │
-                                      ▼
-                             Execution & Audit Log
+   KYC Sign-Up (Aadhaar, PAN) ➔ Onboarding Tour ➔ Available Balance Dashboard
+                                                        │
+ ┌──────────────────────────────────────────────────────┴──────────────────────────────────────────────────────┐
+ ▼                                                                                                             ▼
+Add Money / Deposit (UPI, Wire)                                                                 P2P / Standard Transfer (Protected)
+ │                                                                                                             │
+ ▼                                                                                                             ▼
+CREDIT Ledger Entry                                                                              TransactionOrchestrator Checks:
+                                                                                                 1. Freeze Lock Verification
+                                                                                                 2. Daily limit evaluation
+                                                                                                 3. Beneficiary cooling check
+                                                                                                               │
+                                                                                                               ▼
+                                                                                                 Hybrid Decision Pipeline:
+                                                                                                 - Rule Engine (8 compliance rules)
+                                                                                                 - ML Risk Evaluator + SHAP Values
+                                                                                                               │
+                                                                                                               ▼
+                                                                                                 Multi-Agent AI reasoning core:
+                                                                                                 - Context, Policy, and Memory
+                                                                                                               │
+                                                                                                               ▼
+                                                                                                 Adaptive Authentication Verification:
+                                                                                                 - Password ➔ MPIN ➔ OTP intent prompt
+                                                                                                               │
+                                                                                                               ▼
+                                                                                                      APPROVED / BLOCKED
+                                                                                                               │
+                                ┌──────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┐
+                                ▼                                                                                                             ▼
+                         DEBIT Ledger Entry (Sender)                                                                                   CREDIT Ledger (Recipient)
 ```
 
 ---
 
-## Core Technical Features
+## 🌟 Core Neo-Banking & Security Features
 
-1. **Transaction Orchestrator**: Coordinates session checking, balance checks, ML scoring, compliance checking, and agent calls.
-2. **Customer Digital Twin**: Dynamically models individual spending velocities, amounts, devices, times, and trusted recipients.
-3. **Machine Learning & SHAP Layer**: Predicts risk probability and displays feature-level reason codes.
-4. **LangGraph Multi-Agent Core**: 5 collaborative agents (Context, Interpretation, Policy, Conversation, Memory).
-5. **Adaptive Authentication**: Seamlessly increases authentication hurdles (MPIN, OTP) as calculated transaction risk increases.
-6. **Executive Dashboard**: Dark-themed, responsive portal offering spend charts, trust analysis, admin controls, and transaction timelines.
+### 🏢 Banking Primitives
+- **Immutable Passbook Ledger**: Tracks all cash flow movements (credits and debits) with running balance snapshots. Includes CSV statement download capability.
+- **Auto-Generated Accounts**: Auto-generates unique 12-digit account numbers and IFSC code `NIRN0000001` on registration.
+- **P2P Wire Transfers**: Instant transfers directly to other system users using their account numbers with name verification checkups.
+- **Flexible Deposits**: "Add Money" feature supporting UPI, Bank Wire Transfers, Salary, and Refunds.
+- **Guided Onboarding Tour**: Highlights dashboard metrics, transfer forms, and security insights step-by-step for fresh users.
+
+### 🛡️ Enterprise Security Operations (Real-Bank Equivalents)
+- **3-Step KYC Sign-up**: Gathers full name, email, phone, masked Aadhaar (only last 4 stored), PAN card formatting checks, and optional DL.
+- **Failed Login Lockout**: 5 failed credentials attempts locks login for 15 minutes to defeat brute force.
+- **Configurable Daily limits**: Users can customize their spending limits inside settings confirmed via security MPIN.
+- **Instant Account Freeze**: Self-service emergency switch that locks all outgoing transfers. Unfreezable only with MPIN.
+- **Activity Log Audit Trails**: Audit trails for logins, locks, freezes, and profile updates.
+- **Session timeout Warning**: Auto-invalidates inactive sessions after 10 minutes with popup extend warnings at the 9-minute mark.
+- **Beneficiary Cooling Period**: Transfers to recipients created <24h ago exceeding $10,000 auto-trigger high-risk OTP challenge paths.
+- **Password Strength Rules**: Validates passwords for length (8+ chars), mixed casing, numerals, and special characters.
+
+### 🧠 Unique AI Decisions Layer
+- **Scam Drill Simulator**: Gamified social engineering exercises featuring 8 realistic India-specific scenarios (Tech Support, Phishing, KYC links, UPI OLX requests, romance/job scams) to train customer awareness.
+- **AI Explainability Report**: Downloadable compliance audit report displaying SHAP factors, rule evaluations, decision steps, and agent logs.
+- **Risk Velocity Heatmap**: 7x24 grid color-coding spending patterns to identify anomalous transaction periods.
 
 ---
 
-## Project Structure
+## 📂 Project Structure
 
-- `backend/`: FastAPI implementation, SQLite db, SQLAlchemy models, Rule engine, ML engine, and Multi-Agent Orchestrator.
-- `frontend/`: React + Vite + TS client interface, dashboard, security center, analytics, admin portal, and orchestrator animation panels.
+- `backend/`: FastAPI implementation, SQLite db, SQLAlchemy models, Pydantic schemas, and Multi-Agent Orchestrator.
+- `frontend/`: React + Vite + TS client interface, dashboard, analytics charts, settings screens, passbook, and guided tours.
 
 ---
 
-## Setup & Running Instructions
+## ⚙️ Setup & Running Instructions
 
 ### Backend
 1. Navigate to the backend folder:
@@ -65,10 +94,6 @@ Deterministic Rules (rule_engine.py)                 Explainable ML Risk (ml_eng
    - On Windows (PowerShell):
      ```powershell
      .\venv\Scripts\Activate.ps1
-     ```
-   - On Windows (CMD):
-     ```cmd
-     .\venv\Scripts\activate.bat
      ```
    - On macOS/Linux:
      ```bash
