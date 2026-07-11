@@ -33,7 +33,6 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       const errorData = await response.json();
       errorMessage = errorData.detail || errorMessage;
     } catch {
-      // JSON parsing failed, use status text
       errorMessage = response.statusText || errorMessage;
     }
     throw new Error(errorMessage);
@@ -54,6 +53,13 @@ export const api = {
       body: JSON.stringify(data),
     }),
     me: () => request<any>('/auth/me'),
+    updateProfile: (data: any) => request<any>('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+    completeTour: () => request<any>('/auth/tour-complete', {
+      method: 'POST',
+    }),
   },
 
   // Recipient API
@@ -116,5 +122,38 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+  },
+
+  // Neo-Banking API
+  banking: {
+    deposit: (data: { amount: number; category: string }) => request<any>('/banking/deposit', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    passbook: () => request<any[]>('/banking/passbook'),
+    balance: () => request<any>('/banking/balance'),
+    lookup: (accountNumber: string) => request<any>(`/banking/lookup?account_number=${accountNumber}`),
+    p2pTransfer: (data: { recipient_account_number: string; amount: number; device: string; location: string }) => request<any>('/banking/p2p-transfer', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  },
+
+  // Security Operations API
+  securityOps: {
+    freeze: () => request<any>('/security/freeze', { method: 'POST' }),
+    unfreeze: (data: { mpin: string }) => request<any>('/security/unfreeze', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    activityLog: () => request<any[]>('/security/activity-log'),
+    updateLimit: (data: { limit: number; mpin: string }) => request<any>('/security/update-limit', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+    changePassword: (data: any) => request<any>('/security/change-password', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
   }
 };

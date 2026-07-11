@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api import auth, recipients, transactions, dashboard, admin, drills
+from app.api import auth, recipients, transactions, dashboard, admin, drills, banking, security_ops
 
 # Create database tables automatically
 Base.metadata.create_all(bind=engine)
@@ -51,6 +51,8 @@ app.include_router(transactions.router, prefix=settings.API_V1_STR)
 app.include_router(dashboard.router, prefix=settings.API_V1_STR)
 app.include_router(admin.router, prefix=settings.API_V1_STR)
 app.include_router(drills.router, prefix=settings.API_V1_STR)
+app.include_router(banking.router, prefix=settings.API_V1_STR)
+app.include_router(security_ops.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():

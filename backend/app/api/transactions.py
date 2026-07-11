@@ -131,6 +131,10 @@ def authenticate_challenge(
             db.add(tx)
             db.commit()
 
+            # Record Ledger Entry
+            from app.crud.crud import record_approved_transaction_ledger
+            record_approved_transaction_ledger(db, tx.id)
+
             # Update Digital Twin
             DigitalTwinService.update_profile(
                 db=db,
@@ -243,6 +247,10 @@ def submit_clarification(
         db.add(current_user)
         db.add(tx)
         db.commit()
+
+        # Record Ledger Entry
+        from app.crud.crud import record_approved_transaction_ledger
+        record_approved_transaction_ledger(db, tx.id)
 
         # Update Digital Twin
         DigitalTwinService.update_profile(

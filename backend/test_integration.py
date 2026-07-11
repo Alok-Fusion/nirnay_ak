@@ -24,7 +24,17 @@ def run_integration_tests():
     try:
         # 1. Register User (Triggering DB seed history)
         print("\n--- Step 1: User Registration & Auto Seeding History ---")
-        reg_data = UserCreate(username="alok_kumar", email="alok@fusion.com", password="secure_password", mpin="9999")
+        reg_data = UserCreate(
+            username="alok_kumar",
+            email="alok@fusion.com",
+            password="SecurePassword123!",
+            mpin="9999",
+            full_name="Alok Kumar",
+            phone="9876543210",
+            address="123 Financial District, Mumbai",
+            aadhaar_number="123456789012",
+            pan_number="ABCDE1234F"
+        )
         reg_response = register(user_in=reg_data, db=db)
         print("Registration access token generated:", reg_response["access_token"])
         

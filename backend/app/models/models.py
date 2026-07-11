@@ -15,11 +15,30 @@ class User(Base):
     mpin = Column(String, nullable=True) # Plain text MPIN for simplified demo validation or hashed
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # KYC & Neo-Banking fields
+    full_name = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    address = Column(Text, nullable=True)
+    aadhaar_last4 = Column(String(4), nullable=True)
+    pan_number = Column(String(10), nullable=True)
+    driving_license = Column(String, nullable=True)
+    account_number = Column(String(12), unique=True, index=True, nullable=True)
+    ifsc_code = Column(String, default="NIRN0000001")
+    is_tour_completed = Column(Boolean, default=False)
+    is_frozen = Column(Boolean, default=False)
+    daily_transfer_limit = Column(Float, default=200000.0)
+    failed_login_attempts = Column(Integer, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    last_login_at = Column(DateTime, nullable=True)
+    last_login_device = Column(String, nullable=True)
+
     # Relationships
     digital_twin = relationship("DigitalTwin", back_populates="user", uselist=False)
     recipients = relationship("Recipient", back_populates="user")
     transactions = relationship("Transaction", back_populates="sender", foreign_keys="[Transaction.sender_id]")
     audit_logs = relationship("AuditLog", back_populates="user")
+    ledger_entries = relationship("LedgerEntry", back_populates="user")
+    security_logs = relationship("SecurityLog", back_populates="user")
 
 class DigitalTwin(Base):
     __tablename__ = "digital_twins"
@@ -91,3 +110,34 @@ class AuditLog(Base):
     # Relationships
     transaction = relationship("Transaction", back_populates="audit_log")
     user = relationship("User", back_populates="audit_logs")
+
+class LedgerEntry(Base):
+    __tablename__ = "ledger_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    type = Column(String, nullable=False) # CREDIT or DEBIT
+    category = Column(String, nullable=False) # SALARY, UPI_RECEIVE, BANK_TRANSFER, REFUND, P2P_RECEIVE, TRANSFER_OUT, P2P_SENT
+    amount = Column(Float, nullable=False)
+    balance_after = Column(Float, nullable=False)
+    description = Column(String, nullable=False)
+    reference_id = Column(String, nullable=True)
+    counterparty = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    user = relationship("User", back_populates="ledger_entries")
+
+class SecurityLog(Base):
+    __tablename__ = "security_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    event_type = Column(String, nullable=False) # LOGIN_SUCCESS, LOGIN_FAILED, ACCOUNT_FROZEN, etc.
+    ip_address = Column(String, nullable=True)
+    device = Column(String, nullable=True)
+    details = Column(Text, nullable=True) # JSON details
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    user = relationship("User", back_populates="security_logs")

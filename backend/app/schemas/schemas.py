@@ -1,6 +1,7 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import List, Optional
 from datetime import datetime
+import re
 
 # Authentication Schemas
 class UserCreate(BaseModel):
@@ -8,6 +9,40 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     mpin: str = Field(..., min_length=4, max_length=6, description="MPIN must be 4 to 6 digits")
+    full_name: str
+    phone: str
+    address: str
+    aadhaar_number: str = Field(..., min_length=12, max_length=12)
+    pan_number: str = Field(..., min_length=10, max_length=10)
+    driving_license: Optional[str] = None
+
+    @field_validator('password')
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'[0-9]', v):
+            raise ValueError('Password must contain at least one digit')
+        if not re.search(r'[^a-zA-Z0-9]', v):
+            raise ValueError('Password must contain at least one special character')
+        return v
+
+    @field_validator('aadhaar_number')
+    @classmethod
+    def validate_aadhaar(cls, v: str) -> str:
+        if not v.isdigit():
+            raise ValueError('Aadhaar number must contain only digits')
+        return v
+
+    @field_validator('pan_number')
+    @classmethod
+    def validate_pan(cls, v: str) -> str:
+        v_upper = v.upper()
+        if not re.match(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$', v_upper):
+            raise ValueError('Invalid PAN format (expected e.g. ABCDE1234F)')
+        return v_upper
 
 class UserLogin(BaseModel):
     username: str
@@ -20,6 +55,19 @@ class UserOut(BaseModel):
     balance: float
     security_score: float
     created_at: datetime
+    
+    # KYC & Banking fields
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    aadhaar_last4: Optional[str] = None
+    pan_number: Optional[str] = None
+    driving_license: Optional[str] = None
+    account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    is_tour_completed: bool
+    is_frozen: bool
+    daily_transfer_limit: float
 
     class Config:
         from_attributes = True
@@ -30,6 +78,11 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+class UserProfileUpdate(BaseModel):
+    phone: str
+    address: str
+    email: EmailStr
 
 # Recipient Schemas
 class RecipientCreate(BaseModel):
@@ -106,3 +159,47 @@ class DashboardSummary(BaseModel):
 class AdminOverrideRequest(BaseModel):
     transaction_id: int
     action: str # FORCE_APPROVE or FORCE_BLOCK
+
+# Neo-Banking Schemas
+class DepositRequest(BaseModel):
+    amount: float = Field(..., gt=0)
+    category: str # UPI_RECEIVE, BANK_TRANSFER, SALARY, REFUND
+
+class P2PTransferRequest(BaseModel):
+    recipient_account_number: str
+    amount: float = Field(..., gt=0)
+    device: str
+    location: str
+
+class LedgerEntryOut(BaseModel):
+    id: int
+    type: str
+    category: str
+    amount: float
+    balance_after: float
+    description: str
+    reference_id: Optional[str] = None
+    counterparty: Optional[str] = None
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+class SecurityLogOut(BaseModel):
+    id: int
+    event_type: str
+    ip_address: Optional[str] = None
+    device: Optional[str] = None
+    details: Optional[str] = None
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+class UpdateLimitRequest(BaseModel):
+    limit: float = Field(..., gt=0)
+    mpin: str
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str

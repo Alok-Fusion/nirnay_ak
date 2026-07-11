@@ -4,7 +4,8 @@ from app.services.ml_engine import MLEngine
 from app.services.rule_engine import RuleEngine
 from app.services.agents import MultiAgentOrchestrator
 from app.services.digital_twin import DigitalTwinService
-from datetime import datetime, timezone
+from app.crud.crud import record_approved_transaction_ledger
+from datetime import datetime, timezone, timedelta
 import json
 import time
 
@@ -35,6 +36,35 @@ class TransactionOrchestrator:
         if not twin:
             return {"error": "Sender digital twin not initialized"}
 
+        # 1b. Check Freeze status
+        if user.is_frozen:
+            return {"error": "Transaction rejected: Your account is currently frozen. Unfreeze it from Security Settings."}
+
+        # 1c. Check Daily limit
+        now_utc = datetime.now(timezone.utc)
+        today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Convert local hours lookup if DB timezone has no timezone
+        db_today_start = today_start.replace(tzinfo=None)
+        todays_approved = db.query(Transaction).filter(
+            Transaction.sender_id == sender_id,
+            Transaction.status == "APPROVED",
+            Transaction.timestamp >= db_today_start
+        ).all()
+        today_total = sum(tx.amount for tx in todays_approved)
+        if today_total + amount > user.daily_transfer_limit:
+            return {"error": f"Transaction rejected: Daily limit of ${user.daily_transfer_limit:,.2f} exceeded. Today's processed: ${today_total:,.2f}."}
+
+        # 1d. Check Beneficiary Cooling Period (24h limit, $10,000 threshold)
+        is_cooling_active = False
+        if recipient.created_at:
+            cooling_cutoff = now_utc - timedelta(hours=24)
+            recip_created = recipient.created_at
+            if recip_created.tzinfo is None:
+                recip_created = recip_created.replace(tzinfo=timezone.utc)
+            if recip_created > cooling_cutoff and amount > 10000.0:
+                is_cooling_active = True
+
         # 2. Check balance
         if user.balance < amount:
             return {"error": "Insufficient account balance"}
@@ -61,16 +91,22 @@ class TransactionOrchestrator:
             location=location
         )
         risk_score = ml_result["risk_score"]
+        
+        # Inject cooling period score adjustment
+        if is_cooling_active:
+            risk_score = min(100.0, risk_score + 20.0)
+            if "reason_codes" in ml_result:
+                ml_result["reason_codes"].append("Beneficiary added within last 24h (cooling period active)")
+            triggered_rules.append("beneficiary_cooling_period")
 
         # 5. Hybrid Intelligence Decision Pipeline
-        # Decide if AI Multi-Agent reasoning is needed
         agent_logs = []
         requires_clarification = False
         clarification_prompt = ""
         decision_status = "PENDING"
         
         # If rules or ML indicate any elevated risk, invoke AI agents
-        if rule_decision != "SAFE" or risk_score >= 20.0:
+        if rule_decision != "SAFE" or risk_score >= 20.0 or is_cooling_active:
             agent_result = self.agent_orchestrator.run_agents(
                 db=db,
                 sender_id=sender_id,
@@ -92,13 +128,8 @@ class TransactionOrchestrator:
             ]
 
         # 6. Determine Adaptive Authentication Challenge
-        # Safe: PASSWORD (already authenticated via session login)
-        # Suspicious: PASSWORD,MPIN
-        # High Risk: PASSWORD,MPIN,OTP
-        # Blacklisted / Emergency: BLOCK immediately
-        
         auth_steps_required = "PASSWORD"
-        if rule_decision == "HIGH_RISK" or risk_score >= 65.0:
+        if rule_decision == "HIGH_RISK" or risk_score >= 65.0 or is_cooling_active:
             auth_steps_required = "PASSWORD,MPIN,OTP"
             decision_status = "CHALLENGED"
             if recipient.is_blacklisted:
@@ -168,6 +199,9 @@ class TransactionOrchestrator:
                 device=device,
                 location=location
             )
+            
+            # Record Ledger credit/debit transaction log
+            record_approved_transaction_ledger(db, tx.id)
 
         return {
             "transaction_id": tx.id,

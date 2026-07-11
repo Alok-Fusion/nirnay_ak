@@ -15,14 +15,41 @@ def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
 
 def create_user(db: Session, user: UserCreate):
+    import random
+    from app.models.models import LedgerEntry, SecurityLog
+
+    # Generate a unique 12-digit account number
+    account_number = "".join([str(random.randint(0, 9)) for _ in range(12)])
+    while db.query(User).filter(User.account_number == account_number).first() is not None:
+        account_number = "".join([str(random.randint(0, 9)) for _ in range(12)])
+
     hashed_pwd = get_password_hash(user.password)
+    initial_balance = 25000.0
+    
+    # Check if is_demo
+    is_demo = user.username.lower().startswith("demo") or user.username in ["robert_miller", "alok_kumar", "alex_jones"]
+    if is_demo:
+        initial_balance = 150000.0
+
     db_user = User(
         username=user.username,
         email=user.email,
         hashed_password=hashed_pwd,
-        mpin=user.mpin, # In production this would be hashed, for our interactive demo we verify plain or simple hashed
-        balance=25000.0,  # Fresh starting balance for testing
-        security_score=85.0
+        mpin=user.mpin,
+        balance=initial_balance,
+        security_score=85.0,
+        full_name=user.full_name,
+        phone=user.phone,
+        address=user.address,
+        aadhaar_last4=user.aadhaar_number[-4:],
+        pan_number=user.pan_number,
+        driving_license=user.driving_license,
+        account_number=account_number,
+        ifsc_code="NIRN0000001",
+        is_tour_completed=False,
+        is_frozen=False,
+        daily_transfer_limit=200000.0,
+        failed_login_attempts=0
     )
     db.add(db_user)
     db.commit()
@@ -41,18 +68,63 @@ def create_user(db: Session, user: UserCreate):
     )
     db.add(db_twin)
     db.commit()
+
+    # Create initial LedgerEntry recording the initial account balance
+    initial_ledger = LedgerEntry(
+        user_id=db_user.id,
+        type="CREDIT",
+        category="BANK_TRANSFER",
+        amount=initial_balance,
+        balance_after=initial_balance,
+        description="Account opened & Initial balance seeded",
+        counterparty="NIRNAY Reserve"
+    )
+    db.add(initial_ledger)
+    db.commit()
+
+    # Create initial SecurityLog
+    sec_log = SecurityLog(
+        user_id=db_user.id,
+        event_type="ACCOUNT_CREATED",
+        device="Windows-Chrome",
+        details=json.dumps({"username": db_user.username, "account_number": db_user.account_number})
+    )
+    db.add(sec_log)
+    db.commit()
     
-    # Seed mock history only for demo or test accounts to preserve clean dashboards for new registrations
-    is_demo = user.username.lower().startswith("demo") or user.username in ["robert_miller", "alok_kumar", "alex_jones"]
     if is_demo:
-        # Give demo users a larger balance for transactions
-        db_user.balance = 150000.0
-        db.add(db_user)
-        db.commit()
-        
         seed_mock_history(db, db_user.id)
     
     return db_user
+
+def update_user_profile(db: Session, user_id: int, phone: str, address: str, email: str) -> User:
+    from app.models.models import SecurityLog
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        return None
+    
+    old_details = {
+        "phone": db_user.phone,
+        "address": db_user.address,
+        "email": db_user.email
+    }
+    
+    db_user.phone = phone
+    db_user.address = address
+    db_user.email = email
+    
+    db.add(db_user)
+    
+    sec_log = SecurityLog(
+        user_id=user_id,
+        event_type="PROFILE_UPDATED",
+        details=json.dumps({"old": old_details, "new": {"phone": phone, "address": address, "email": email}})
+    )
+    db.add(sec_log)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
 
 def seed_mock_history(db: Session, user_id: int):
     # 1. Create a few recipients
@@ -197,3 +269,71 @@ def get_audit_log_by_transaction_id(db: Session, transaction_id: int):
 
 def get_escalated_transactions(db: Session):
     return db.query(Transaction).filter(Transaction.status == "ESCALATED").order_by(Transaction.timestamp.desc()).all()
+
+def record_approved_transaction_ledger(db: Session, tx_id: int):
+    from app.models.models import Transaction, User, LedgerEntry
+    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+    if not tx or tx.status != "APPROVED":
+        return
+    
+    sender = db.query(User).filter(User.id == tx.sender_id).first()
+    # Check if we already recorded a ledger entry for this transaction to avoid duplicates
+    existing_debit = db.query(LedgerEntry).filter(
+        LedgerEntry.user_id == tx.sender_id,
+        LedgerEntry.reference_id == str(tx.id),
+        LedgerEntry.type == "DEBIT"
+    ).first()
+    if existing_debit:
+        return
+    
+    recipient = tx.recipient
+    # Check if recipient is a registered local user by looking up their account number
+    recip_user = db.query(User).filter(User.account_number == recipient.account_number).first()
+    
+    if recip_user:
+        # Credit recipient balance
+        recip_user.balance += tx.amount
+        db.add(recip_user)
+        db.commit() # commit immediately to get correct snapshot balance_after
+        
+        # Create credit ledger entry for recipient
+        recip_ledger = LedgerEntry(
+            user_id=recip_user.id,
+            type="CREDIT",
+            category="P2P_RECEIVE",
+            amount=tx.amount,
+            balance_after=recip_user.balance,
+            description=f"Received funds from {sender.full_name or sender.username}",
+            reference_id=str(tx.id),
+            counterparty=sender.full_name or sender.username
+        )
+        db.add(recip_ledger)
+        
+        # Create debit ledger entry for sender
+        sender_ledger = LedgerEntry(
+            user_id=sender.id,
+            type="DEBIT",
+            category="P2P_SENT",
+            amount=tx.amount,
+            balance_after=sender.balance,
+            description=f"Transferred funds to {recip_user.full_name or recip_user.username}",
+            reference_id=str(tx.id),
+            counterparty=recip_user.full_name or recip_user.username
+        )
+        db.add(sender_ledger)
+    else:
+        # Standard external recipient debit ledger entry
+        sender_ledger = LedgerEntry(
+            user_id=sender.id,
+            type="DEBIT",
+            category="TRANSFER_OUT",
+            amount=tx.amount,
+            balance_after=sender.balance,
+            description=f"Transferred funds to {recipient.name} ({recipient.bank_name})",
+            reference_id=str(tx.id),
+            counterparty=recipient.name
+        )
+        db.add(sender_ledger)
+    
+    db.commit()
+

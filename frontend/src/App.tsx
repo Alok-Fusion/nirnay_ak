@@ -21,7 +21,14 @@ import {
   Monitor,
   Crosshair,
   Download,
-  FileText
+  FileText,
+  Lock,
+  Unlock,
+  Search,
+  BookOpen,
+  Key,
+  Calendar,
+  Info
 } from 'lucide-react';
 import './App.css';
 
@@ -34,7 +41,7 @@ const queryClient = new QueryClient({
   },
 });
 
-type PageType = 'dashboard' | 'transfer' | 'security' | 'analytics' | 'admin' | 'drills';
+type PageType = 'dashboard' | 'transfer' | 'security' | 'analytics' | 'admin' | 'drills' | 'passbook' | 'profile';
 
 const AppContent: React.FC = () => {
   const { user, loading, login, register, logout, refreshUser } = useAuth();
@@ -43,14 +50,56 @@ const AppContent: React.FC = () => {
   // Navigation state
   const [activePage, setActivePage] = useState<PageType>('dashboard');
 
-  // Login/Register page visual states
+  // Login/Register page states
   const [isRegister, setIsRegister] = useState<boolean>(false);
+  const [regStep, setRegStep] = useState<number>(1); // Multi-step registration state
   const [username, setUsername] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [mpin, setMpin] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  // KYC Fields
+  const [fullName, setFullName] = useState<string>('');
+  const [phone, setPhone] = useState<string>('');
+  const [address, setAddress] = useState<string>('');
+  const [aadhaarNumber, setAadhaarNumber] = useState<string>('');
+  const [panNumber, setPanNumber] = useState<string>('');
+  const [drivingLicense, setDrivingLicense] = useState<string>('');
+
+  // Deposit Modal state
+  const [depositModalOpen, setDepositModalOpen] = useState<boolean>(false);
+  const [depositAmount, setDepositAmount] = useState<string>('');
+  const [depositCategory, setDepositCategory] = useState<string>('UPI_RECEIVE');
+  const [depositLoading, setDepositLoading] = useState<boolean>(false);
+
+  // P2P Transfer states
+  const [transferType, setTransferType] = useState<'standard' | 'p2p'>('standard');
+  const [p2pAccountNumber, setP2pAccountNumber] = useState<string>('');
+  const [p2pAmount, setP2pAmount] = useState<string>('');
+  const [p2pRecipientName, setP2pRecipientName] = useState<string>('');
+  const [p2pLookupLoading, setP2pLookupLoading] = useState<boolean>(false);
+  const [p2pLookupError, setP2pLookupError] = useState<string>('');
+
+  // Editable Profile Settings states
+  const [profilePhone, setProfilePhone] = useState<string>('');
+  const [profileAddress, setProfileAddress] = useState<string>('');
+  const [profileEmail, setProfileEmail] = useState<string>('');
+  const [profilePasswordCurrent, setProfilePasswordCurrent] = useState<string>('');
+  const [profilePasswordNew, setProfilePasswordNew] = useState<string>('');
+  const [profileLimit, setProfileLimit] = useState<string>('');
+  const [profileLimitMpin, setProfileLimitMpin] = useState<string>('');
+  const [unfreezeMpin, setUnfreezeMpin] = useState<string>('');
+  const [unfreezeOpen, setUnfreezeOpen] = useState<boolean>(false);
+  const [settingsStatus, setSettingsStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState<boolean>(false);
+
+  // Guided Onboarding Tour state
+  const [tourStep, setTourStep] = useState<number | null>(null);
+
+  // Session Timeout state
+  const [showTimeoutWarning, setShowTimeoutWarning] = useState<boolean>(false);
 
   // New recipient form state
   const [recipName, setRecipName] = useState<string>('');
@@ -65,7 +114,7 @@ const AppContent: React.FC = () => {
   // Transaction Orchestrator Visualizer modal states
   const [visualizerOpen, setVisualizerOpen] = useState<boolean>(false);
   const [visualizerStep, setVisualizerStep] = useState<'gathering' | 'evaluating' | 'reasoning' | 'challenging' | 'completed' | 'blocked'>('gathering');
-  const [activeNode, setActiveNode] = useState<number>(0); // 0: Context, 1: ML/Rules, 2: Agents, 3: Decision
+  const [activeNode, setActiveNode] = useState<number>(0); 
   
   // Data retrieved from orchestrator
   const [orchTxId, setOrchTxId] = useState<number | null>(null);
@@ -140,6 +189,18 @@ const AppContent: React.FC = () => {
     enabled: !!user,
   });
 
+  const { data: passbookData, refetch: refetchPassbook } = useQuery({
+    queryKey: ['passbook'],
+    queryFn: api.banking.passbook,
+    enabled: !!user,
+  });
+
+  const { data: securityActivityLog, refetch: refetchSecurityLog } = useQuery({
+    queryKey: ['securityActivityLog'],
+    queryFn: api.securityOps.activityLog,
+    enabled: !!user,
+  });
+
   const { data: activeAudit, isLoading: isAuditLoading, isError: isAuditError } = useQuery({
     queryKey: ['activeAudit', auditTxId],
     queryFn: () => api.transactions.getAuditLog(auditTxId!),
@@ -164,9 +225,68 @@ const AppContent: React.FC = () => {
       refetchAdmin();
       refetchDash(); refetchAnalytics();
       refetchTxs();
+      refetchPassbook();
       refreshUser();
     },
   });
+
+  // Synchronise settings input default values when user is fetched
+  useEffect(() => {
+    if (user) {
+      setProfilePhone(user.phone || '');
+      setProfileAddress(user.address || '');
+      setProfileEmail(user.email || '');
+      setProfileLimit(String(user.daily_transfer_limit || 200000.0));
+      
+      // Onboarding Tour Trigger
+      if (!user.is_tour_completed) {
+        setTourStep(1);
+      } else {
+        setTourStep(null);
+      }
+    }
+  }, [user]);
+
+  // Session Inactivity Monitor (10-min logout, warning at 9-min)
+  useEffect(() => {
+    if (!user) {
+      setShowTimeoutWarning(false);
+      return;
+    }
+    let warnTimer: any;
+    let logoutTimer: any;
+
+    const resetSessionTimer = () => {
+      clearTimeout(warnTimer);
+      clearTimeout(logoutTimer);
+      setShowTimeoutWarning(false);
+
+      // Warning at 9 minutes
+      warnTimer = setTimeout(() => {
+        setShowTimeoutWarning(true);
+      }, 9 * 60 * 1000);
+
+      // Logout at 10 minutes
+      logoutTimer = setTimeout(() => {
+        logout();
+        setShowTimeoutWarning(false);
+      }, 10 * 60 * 1000);
+    };
+
+    window.addEventListener('mousemove', resetSessionTimer);
+    window.addEventListener('keydown', resetSessionTimer);
+    window.addEventListener('click', resetSessionTimer);
+
+    resetSessionTimer();
+
+    return () => {
+      clearTimeout(warnTimer);
+      clearTimeout(logoutTimer);
+      window.removeEventListener('mousemove', resetSessionTimer);
+      window.removeEventListener('keydown', resetSessionTimer);
+      window.removeEventListener('click', resetSessionTimer);
+    };
+  }, [user, logout]);
 
   if (loading) {
     return (
@@ -183,13 +303,34 @@ const AppContent: React.FC = () => {
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    if (isRegister) {
+      // Validate register step inputs first
+      if (regStep < 3) {
+        setRegStep(prev => prev + 1);
+        return;
+      }
+      if (mpin.length < 4 || mpin.length > 6 || !/^\d+$/.test(mpin)) {
+        setError('MPIN must be 4 to 6 numeric digits');
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       if (isRegister) {
-        if (mpin.length < 4 || mpin.length > 6 || !/^\d+$/.test(mpin)) {
-          throw new Error('MPIN must be 4 to 6 numeric digits');
-        }
-        await register({ username, email, password, mpin });
+        await register({ 
+          username, 
+          email, 
+          password, 
+          mpin,
+          full_name: fullName,
+          phone,
+          address,
+          aadhaar_number: aadhaarNumber,
+          pan_number: panNumber,
+          driving_license: drivingLicense || null
+        });
       } else {
         await login({ username, password });
       }
@@ -197,14 +338,105 @@ const AppContent: React.FC = () => {
       refetchTwin();
       refetchRecipients();
       refetchTxs();
+      refetchPassbook();
+      refetchSecurityLog();
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
+      if (isRegister) {
+        setRegStep(1); // Reset to first step on failure to allow corrections
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
   // Initiate Transfer Flow
+  const handleP2PLookup = async () => {
+    if (!p2pAccountNumber) return;
+    setP2pLookupLoading(true);
+    setP2pLookupError('');
+    setP2pRecipientName('');
+    try {
+      const result = await api.banking.lookup(p2pAccountNumber);
+      setP2pRecipientName(result.full_name);
+    } catch (err: any) {
+      setP2pLookupError(err.message || 'Account lookup failed.');
+    } finally {
+      setP2pLookupLoading(false);
+    }
+  };
+
+  const handleP2PTransferSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!p2pAccountNumber || !p2pAmount || !p2pRecipientName) {
+      alert('Please verify recipient account credentials before executing.');
+      return;
+    }
+
+    setChallengeMpin('');
+    setChallengeOtp('');
+    setChallengeResponse('');
+    setChallengeError('');
+
+    setVisualizerOpen(true);
+    setVisualizerStep('gathering');
+    setActiveNode(0);
+
+    const device = "Windows-Chrome (Desktop)";
+    const location = "Mumbai, IN";
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, 800));
+      setActiveNode(1);
+      setVisualizerStep('evaluating');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      setActiveNode(2);
+      setVisualizerStep('reasoning');
+
+      const initResponse = await api.banking.p2pTransfer({
+        recipient_account_number: p2pAccountNumber,
+        amount: Number(p2pAmount),
+        device,
+        location
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 800));
+      setActiveNode(3);
+
+      setOrchTxId(initResponse.transaction_id);
+      setOrchRiskScore(initResponse.risk_score);
+      setOrchAgentLogs(initResponse.agent_logs);
+      setOrchShapValues(initResponse.shap_values);
+      setOrchTriggeredRules(initResponse.triggered_rules);
+      setOrchRequiresClarify(initResponse.requires_clarification);
+      setOrchClarifyPrompt(initResponse.clarification_prompt);
+      setOrchAuthStepsRequired((initResponse.auth_steps_required || 'PASSWORD').split(','));
+      setOrchAuthStepsCompleted((initResponse.auth_steps_completed || 'PASSWORD').split(','));
+
+      if (initResponse.status === 'APPROVED') {
+        setVisualizerStep('completed');
+        refetchDash(); refetchAnalytics();
+        refetchTxs();
+        refetchPassbook();
+        refetchTwin();
+        refreshUser();
+        setP2pAmount('');
+        setP2pAccountNumber('');
+        setP2pRecipientName('');
+      } else if (initResponse.status === 'BLOCKED') {
+        setVisualizerStep('blocked');
+        refetchDash(); refetchAnalytics();
+        refetchTxs();
+      } else {
+        setVisualizerStep('challenging');
+      }
+    } catch (err: any) {
+      setVisualizerOpen(false);
+      alert(err.message || 'P2P Transfer failed to initiate');
+    }
+  };
+
   const handleInitiateTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRecipientId || !transferAmount) return;
@@ -360,69 +592,204 @@ const AppContent: React.FC = () => {
             <p className="brand-tagline">AI-Powered Financial Decision Intelligence Platform</p>
           </div>
 
-          <form onSubmit={handleAuthSubmit} className="auth-form">
-            <h2 className="form-title">{isRegister ? 'Open Digital Banking Account' : 'Secure Enterprise Login'}</h2>
+          <form onSubmit={handleAuthSubmit} className="auth-form" style={{ maxWidth: '420px', width: '100%' }}>
+            <h2 className="form-title">
+              {isRegister ? `Open Account — Step ${regStep} of 3` : 'Secure Enterprise Login'}
+            </h2>
             
             {error && <div className="auth-error-alert">{error}</div>}
 
-            <div className="input-group">
-              <label>Username</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                placeholder="Enter username"
-              />
-            </div>
+            {!isRegister ? (
+              /* LOGIN VIEW */
+              <>
+                <div className="input-group">
+                  <label>Username</label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                    placeholder="Enter username"
+                  />
+                </div>
+                <div className="input-group">
+                  <label>Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    placeholder="••••••••"
+                  />
+                </div>
+                <button type="submit" disabled={submitting} className="auth-submit-btn">
+                  {submitting ? 'Authenticating...' : 'Authenticate & Enter'}
+                </button>
+              </>
+            ) : (
+              /* MULTI-STEP REGISTER VIEW */
+              <>
+                {regStep === 1 && (
+                  <>
+                    <div style={{fontSize:'0.75rem', color:'var(--text-muted)', marginBottom:'1rem'}}>ACCOUNT INFORMATION</div>
+                    <div className="input-group">
+                      <label>Username</label>
+                      <input
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        required
+                        placeholder="Choose unique username"
+                      />
+                    </div>
+                    <div className="input-group">
+                      <label>Legal Full Name</label>
+                      <input
+                        type="text"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        required
+                        placeholder="As shown on official ID"
+                      />
+                    </div>
+                    <div className="input-group">
+                      <label>Email Address</label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        placeholder="name@domain.com"
+                      />
+                    </div>
+                    <div className="input-group">
+                      <label>Phone Number</label>
+                      <input
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        required
+                        placeholder="10-digit mobile number"
+                      />
+                    </div>
+                  </>
+                )}
 
-            {isRegister && (
-              <div className="input-group">
-                <label>Email Address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  placeholder="name@bank.com"
-                />
-              </div>
+                {regStep === 2 && (
+                  <>
+                    <div style={{fontSize:'0.75rem', color:'var(--text-muted)', marginBottom:'1rem'}}>OFFICIAL KYC IDENTITY VERIFICATION</div>
+                    <div className="input-group">
+                      <label>Aadhaar Card Number (12 digits)</label>
+                      <input
+                        type="text"
+                        maxLength={12}
+                        value={aadhaarNumber}
+                        onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, ''))}
+                        required
+                        placeholder="12-digit UIDAI number"
+                      />
+                    </div>
+                    <div className="input-group">
+                      <label>PAN Card Number (10 characters)</label>
+                      <input
+                        type="text"
+                        maxLength={10}
+                        value={panNumber}
+                        onChange={(e) => setPanNumber(e.target.value.toUpperCase())}
+                        required
+                        placeholder="E.g. ABCDE1234F"
+                      />
+                    </div>
+                    <div className="input-group">
+                      <label>Driving License (Optional)</label>
+                      <input
+                        type="text"
+                        value={drivingLicense}
+                        onChange={(e) => setDrivingLicense(e.target.value)}
+                        placeholder="E.g. DL-1420110012345"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {regStep === 3 && (
+                  <>
+                    <div style={{fontSize:'0.75rem', color:'var(--text-muted)', marginBottom:'1rem'}}>SECURITY CONFIGURATION</div>
+                    <div className="input-group">
+                      <label>Password</label>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        placeholder="Min 8 chars, 1 uppercase, 1 digit, 1 special symbol"
+                      />
+                      <span style={{fontSize:'0.7rem', color:'var(--text-muted)', marginTop:'0.2rem'}}>Requires mixed case, numbers, and symbols.</span>
+                    </div>
+                    <div className="input-group">
+                      <label>Security MPIN (4-6 digits)</label>
+                      <input
+                        type="password"
+                        maxLength={6}
+                        value={mpin}
+                        onChange={(e) => setMpin(e.target.value.replace(/\D/g, ''))}
+                        required
+                        placeholder="4-6 digit numeric PIN for banking overrides"
+                      />
+                    </div>
+                    <div className="input-group">
+                      <label>Residential Address</label>
+                      <textarea
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        required
+                        rows={2}
+                        placeholder="Enter full billing address"
+                        style={{
+                          width: '100%',
+                          padding: '0.6rem',
+                          borderRadius: '6px',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                          color: '#fff',
+                          resize: 'vertical',
+                          fontFamily: 'inherit',
+                          fontSize: '0.85rem'
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
+                  {regStep > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setRegStep(prev => prev - 1)}
+                      className="logout-btn"
+                      style={{ padding: '0.75rem 1rem' }}
+                    >
+                      Back
+                    </button>
+                  )}
+                  <button type="submit" disabled={submitting} className="auth-submit-btn" style={{ flex: 1, marginTop: 0 }}>
+                    {submitting 
+                      ? 'Processing...' 
+                      : regStep < 3 
+                        ? 'Next Step' 
+                        : 'Submit KYC & Register'
+                    }
+                  </button>
+                </div>
+              </>
             )}
-
-            <div className="input-group">
-              <label>Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="••••••••"
-              />
-            </div>
-
-            {isRegister && (
-              <div className="input-group">
-                <label>Security MPIN (4-6 digits)</label>
-                <input
-                  type="password"
-                  maxLength={6}
-                  value={mpin}
-                  onChange={(e) => setMpin(e.target.value)}
-                  required
-                  placeholder="1234"
-                />
-              </div>
-            )}
-
-            <button type="submit" disabled={submitting} className="auth-submit-btn">
-              {submitting ? 'Authenticating...' : isRegister ? 'Register Account' : 'Authenticate & Enter'}
-            </button>
           </form>
 
           <div className="auth-footer">
             <button
               onClick={() => {
                 setIsRegister(!isRegister);
+                setRegStep(1);
                 setError('');
               }}
               className="auth-switch-btn"
@@ -487,6 +854,20 @@ const AppContent: React.FC = () => {
           >
             <Crosshair className="menu-icon" /> Scam Drills
           </button>
+
+          <button 
+            onClick={() => setActivePage('passbook')} 
+            className={`menu-item ${activePage === 'passbook' ? 'active' : ''}`}
+          >
+            <BookOpen className="menu-icon" /> Bank Passbook
+          </button>
+
+          <button 
+            onClick={() => setActivePage('profile')} 
+            className={`menu-item ${activePage === 'profile' ? 'active' : ''}`}
+          >
+            <Settings className="menu-icon" /> Profile & Security
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -517,29 +898,56 @@ const AppContent: React.FC = () => {
             </header>
 
             <div className="page-content">
+              {user.is_frozen && (
+                <div className="auth-error-alert" style={{ margin: '0 0 1.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: '8px', padding: '1rem' }}>
+                  <Lock style={{ width: '18px', height: '18px', flexShrink: 0 }} />
+                  <div>
+                    <strong>ACCOUNT FROZEN:</strong> All outgoing transfers are blocked for your safety. Visit the <strong>Profile & Security</strong> tab to unfreeze using your MPIN.
+                  </div>
+                </div>
+              )}
+
               {/* Top Stats Cards */}
-              <div className="grid-row-3">
+              <div className="grid-row-3" id="tour-step-1">
                 <div className="glass-card">
-                  <h3>Available Balance</h3>
-                  <p className="summary-stat-val">${(dashSummary?.balance ?? user.balance).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                    <div>
+                      <h3 style={{color:'var(--text-muted)', fontSize:'0.75rem', textTransform:'uppercase'}}>Available Balance</h3>
+                      <p className="summary-stat-val" style={{margin:'0.3rem 0'}}>${(dashSummary?.balance ?? user.balance).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                    </div>
+                    <button 
+                      onClick={() => setDepositModalOpen(true)}
+                      className="status-badge approved"
+                      style={{border:'none', cursor:'pointer', padding:'0.4rem 0.6rem', display:'flex', alignItems:'center', gap:'0.3rem', fontWeight:'600', fontSize:'0.75rem'}}
+                    >
+                      <PlusCircle style={{width:'12px', height:'12px'}} /> Add Money
+                    </button>
+                  </div>
                   <p className="summary-stat-desc">Deducted only after active transaction clearance</p>
                 </div>
                 
                 <div className="glass-card">
-                  <h3>Behavioral Trust Level</h3>
-                  <p className="summary-stat-val" style={{color: 'var(--success)'}}>{dashSummary?.trust_level || 'NEW'}</p>
-                  <p className="summary-stat-desc">Computed dynamically via user digital twin</p>
+                  <h3 style={{color:'var(--text-muted)', fontSize:'0.75rem', textTransform:'uppercase'}}>Account Credentials</h3>
+                  <p className="summary-stat-val" style={{fontSize:'1.3rem', fontFamily:'monospace', letterSpacing:'1px', margin:'0.4rem 0', color:'#fff'}}>
+                    {user.account_number || 'N/A'}
+                  </p>
+                  <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.75rem', color:'var(--text-muted)'}}>
+                    <span>IFSC: {user.ifsc_code || 'NIRN0000001'}</span>
+                    <span>Trust: <strong style={{color:'var(--success)'}}>{dashSummary?.trust_level || 'NEW'}</strong></span>
+                  </div>
                 </div>
 
                 <div className="glass-card">
-                  <h3>Total Transactions</h3>
-                  <p className="summary-stat-val">{dashSummary?.transaction_count || 0}</p>
-                  <p className="summary-stat-desc">Includes seeded history logs</p>
+                  <h3 style={{color:'var(--text-muted)', fontSize:'0.75rem', textTransform:'uppercase'}}>Daily limit usage</h3>
+                  <p className="summary-stat-val" style={{fontSize:'1.3rem', margin:'0.4rem 0'}}>
+                    ${(user.daily_transfer_limit || 200000.0).toLocaleString()}
+                  </p>
+                  <p className="summary-stat-desc">Limit per rolling 24 hours. Modify in Security tab.</p>
                 </div>
               </div>
 
               {/* Transactions History Grid */}
-              <div className="glass-card">
+              <div className="glass-card" style={{marginTop:'1.5rem'}} id="tour-step-2">
                 <div className="card-header">
                   <h2 className="card-title"><Clock className="menu-icon" /> Transaction History & AI Intervention Logs</h2>
                 </div>
@@ -565,7 +973,7 @@ const AppContent: React.FC = () => {
                           </td>
                         </tr>
                       ) : (
-                        transactions.map((tx) => {
+                        transactions.slice(0, 5).map((tx) => {
                           const recip = recipients?.find(r => r.id === tx.recipient_id);
                           return (
                             <tr key={tx.id}>
@@ -608,6 +1016,59 @@ const AppContent: React.FC = () => {
                   </table>
                 </div>
               </div>
+
+              {/* Mini Statement Passbook Preview */}
+              <div className="glass-card" style={{marginTop:'1.5rem'}}>
+                <div className="card-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <h2 className="card-title"><BookOpen className="menu-icon" /> Recent Passbook Ledger Activities</h2>
+                  <button onClick={() => setActivePage('passbook')} className="auth-switch-btn" style={{fontSize:'0.8rem', padding:0}}>
+                    View Full Passbook →
+                  </button>
+                </div>
+                <div className="data-table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Type</th>
+                        <th>Category</th>
+                        <th>Counterparty</th>
+                        <th>Amount</th>
+                        <th>Balance After</th>
+                        <th>Date & Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(!passbookData || passbookData.length === 0) ? (
+                        <tr>
+                          <td colSpan={6} style={{textAlign: 'center', padding: '2rem', color: 'var(--text-muted)'}}>
+                            No ledger entries registered. Initialise some money or complete a transfer.
+                          </td>
+                        </tr>
+                      ) : (
+                        passbookData.slice(0, 5).map((entry: any) => (
+                          <tr key={entry.id}>
+                            <td>
+                              <span className={`status-badge ${entry.type === 'CREDIT' ? 'approved' : 'blocked'}`}>
+                                {entry.type === 'CREDIT' ? '↓ CREDIT' : '↑ DEBIT'}
+                              </span>
+                            </td>
+                            <td><span style={{fontSize:'0.8rem', textTransform:'uppercase'}}>{entry.category.replace(/_/g, ' ')}</span></td>
+                            <td>{entry.counterparty || 'N/A'}</td>
+                            <td>
+                              <strong style={{color: entry.type === 'CREDIT' ? 'var(--success)' : 'var(--danger)'}}>
+                                {entry.type === 'CREDIT' ? '+' : '-'}${entry.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                              </strong>
+                            </td>
+                            <td>${entry.balance_after.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                            <td>{new Date(entry.timestamp).toLocaleString()}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
             </div>
           </>
         )}
@@ -626,57 +1087,153 @@ const AppContent: React.FC = () => {
               <div className="grid-row-2">
                 
                 {/* Money Transfer Card */}
-                <div className="glass-card">
-                  <div className="card-header">
+                <div className="glass-card" id="tour-step-3">
+                  <div className="card-header" style={{ marginBottom: '1rem' }}>
                     <h2 className="card-title"><Send className="menu-icon" /> Send Money</h2>
                   </div>
 
-                  <form onSubmit={handleInitiateTransfer}>
-                    <div className="form-input-group">
-                      <label>Select Beneficiary</label>
-                      <select 
-                        value={selectedRecipientId} 
-                        onChange={(e) => setSelectedRecipientId(e.target.value)}
-                        required
-                      >
-                        <option value="">-- Choose recipient --</option>
-                        {recipients?.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.name} ({r.bank_name}) {r.is_blacklisted ? '[BLACKLISTED SCAMMER]' : `[Trust: ${r.trust_score}%]`}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="form-input-group">
-                      <label>Amount ($)</label>
-                      <input 
-                        type="number" 
-                        value={transferAmount} 
-                        onChange={(e) => setTransferAmount(e.target.value)}
-                        placeholder="e.g. 5000"
-                        required 
-                        min="1"
-                      />
-                    </div>
-
-                    {selectedRecipientId && (() => {
-                      const r = recipients?.find(x => x.id === Number(selectedRecipientId));
-                      if (r?.is_blacklisted) {
-                        return (
-                          <div className="auth-error-alert" style={{marginBottom:'1rem', display:'flex', gap:'0.5rem', alignItems:'center'}}>
-                            <AlertTriangle className="menu-icon" /> 
-                            <span>CRITICAL: Recipient is listed on banking threat sheets. Transfer will be blocked!</span>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-
-                    <button type="submit" className="btn-primary" style={{width: '100%', marginTop: '1rem'}}>
-                      Initiate Secure Transfer
+                  {/* Transfer Type Selector */}
+                  <div style={{ display: 'flex', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', overflow: 'hidden', marginBottom: '1.25rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setTransferType('standard')}
+                      style={{
+                        flex: 1, padding: '0.6rem', border: 'none', cursor: 'pointer',
+                        backgroundColor: transferType === 'standard' ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                        color: transferType === 'standard' ? 'var(--primary)' : 'var(--text-muted)',
+                        fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s'
+                      }}
+                    >
+                      Standard Beneficiary
                     </button>
-                  </form>
+                    <button
+                      type="button"
+                      onClick={() => setTransferType('p2p')}
+                      style={{
+                        flex: 1, padding: '0.6rem', border: 'none', cursor: 'pointer',
+                        backgroundColor: transferType === 'p2p' ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                        color: transferType === 'p2p' ? 'var(--primary)' : 'var(--text-muted)',
+                        fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s'
+                      }}
+                    >
+                      P2P Instant Transfer
+                    </button>
+                  </div>
+
+                  {transferType === 'standard' ? (
+                    <form onSubmit={handleInitiateTransfer}>
+                      <div className="form-input-group">
+                        <label>Select Beneficiary</label>
+                        <select 
+                          value={selectedRecipientId} 
+                          onChange={(e) => setSelectedRecipientId(e.target.value)}
+                          required
+                        >
+                          <option value="">-- Choose recipient --</option>
+                          {recipients?.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.name} ({r.bank_name}) {r.is_blacklisted ? '[BLACKLISTED SCAMMER]' : `[Trust: ${r.trust_score}%]`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-input-group">
+                        <label>Amount ($)</label>
+                        <input 
+                          type="number" 
+                          value={transferAmount} 
+                          onChange={(e) => setTransferAmount(e.target.value)}
+                          placeholder="e.g. 5000"
+                          required 
+                          min="1"
+                        />
+                      </div>
+
+                      {selectedRecipientId && (() => {
+                        const r = recipients?.find(x => x.id === Number(selectedRecipientId));
+                        if (r?.is_blacklisted) {
+                          return (
+                            <div className="auth-error-alert" style={{marginBottom:'1rem', display:'flex', gap:'0.5rem', alignItems:'center'}}>
+                              <AlertTriangle className="menu-icon" /> 
+                              <span>CRITICAL: Recipient is listed on banking threat sheets. Transfer will be blocked!</span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      <button type="submit" className="btn-primary" style={{width: '100%', marginTop: '1rem'}} disabled={user.is_frozen}>
+                        {user.is_frozen ? 'Locked (Account Frozen)' : 'Initiate Secure Transfer'}
+                      </button>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleP2PTransferSubmit}>
+                      <div className="form-input-group">
+                        <label>Recipient Account Number</label>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <input 
+                            type="text" 
+                            maxLength={12}
+                            value={p2pAccountNumber} 
+                            onChange={(e) => {
+                              setP2pAccountNumber(e.target.value.replace(/\D/g, ''));
+                              setP2pRecipientName('');
+                              setP2pLookupError('');
+                            }}
+                            placeholder="12-digit account number"
+                            required
+                            style={{ flex: 1 }}
+                          />
+                          <button
+                            type="button"
+                            onClick={handleP2PLookup}
+                            disabled={p2pLookupLoading || !p2pAccountNumber}
+                            className="logout-btn"
+                            style={{ padding: '0 1rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                          >
+                            {p2pLookupLoading ? 'Checking...' : 'Verify'}
+                          </button>
+                        </div>
+                        {p2pRecipientName && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--success)', marginTop: '0.4rem', fontWeight: 600 }}>
+                            ✓ Verified Name: {p2pRecipientName}
+                          </div>
+                        )}
+                        {p2pLookupError && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '0.4rem', fontWeight: 600 }}>
+                            ✗ {p2pLookupError}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="form-input-group">
+                        <label>Amount ($)</label>
+                        <input 
+                          type="number" 
+                          value={p2pAmount} 
+                          onChange={(e) => setP2pAmount(e.target.value)}
+                          placeholder="e.g. 1500"
+                          required 
+                          min="1"
+                        />
+                      </div>
+
+                      <button 
+                        type="submit" 
+                        className="btn-primary" 
+                        style={{width: '100%', marginTop: '1.5rem'}}
+                        disabled={user.is_frozen || !p2pRecipientName}
+                      >
+                        {user.is_frozen 
+                          ? 'Locked (Account Frozen)' 
+                          : !p2pRecipientName 
+                            ? 'Verify Recipient to Continue' 
+                            : 'Initiate P2P Secure Transfer'
+                        }
+                      </button>
+                    </form>
+                  )}
                 </div>
 
                 {/* Add Beneficiary Card */}
@@ -688,7 +1245,7 @@ const AppContent: React.FC = () => {
                   <form onSubmit={(e) => {
                     e.preventDefault();
                     if (!recipName || !recipAcct || !recipBank) return;
-                    addRecipientMutation.mutate({ name: recipName, account_number: recipAcct, bank_name: recipAcct });
+                    addRecipientMutation.mutate({ name: recipName, account_number: recipAcct, bank_name: recipBank });
                   }}>
                     <div className="form-input-group">
                       <label>Full Name</label>
@@ -1342,6 +1899,375 @@ const AppContent: React.FC = () => {
           </>
         )}
 
+        {/* Active Page: Bank Passbook */}
+        {activePage === 'passbook' && (
+          <>
+            <header className="page-header">
+              <div>
+                <h1 className="page-title">Digital Bank Passbook</h1>
+                <p className="page-subtitle">Real-time ledger audit trail showing all transaction credits and debits</p>
+              </div>
+              <button
+                className="action-btn primary"
+                onClick={() => {
+                  if (!passbookData) return;
+                  const headers = ['ID', 'Type', 'Category', 'Counterparty', 'Amount ($)', 'Balance After ($)', 'Date & Time', 'Reference ID'];
+                  const rows = passbookData.map((e: any) => [
+                    e.id,
+                    e.type,
+                    e.category,
+                    e.counterparty || 'N/A',
+                    e.amount,
+                    e.balance_after,
+                    new Date(e.timestamp).toLocaleString().replace(/,/g, ''),
+                    e.reference_id || 'N/A'
+                  ]);
+                  const csvContent = "data:text/csv;charset=utf-8," 
+                    + [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n');
+                  const encodedUri = encodeURI(csvContent);
+                  const a = document.createElement('a');
+                  a.href = encodedUri;
+                  a.download = `nirnay_passbook_${user.username}.csv`;
+                  a.click();
+                }}
+                style={{display:'flex', alignItems:'center', gap:'0.4rem', padding:'0.6rem 1.2rem'}}
+              >
+                <Download style={{width:'16px', height:'16px'}} /> Export Statement
+              </button>
+            </header>
+
+            <div className="page-content">
+              <div className="glass-card">
+                <div className="card-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <h2 className="card-title"><BookOpen className="menu-icon" /> Statement Log Book</h2>
+                </div>
+                <div className="data-table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Transaction ID</th>
+                        <th>Type</th>
+                        <th>Category</th>
+                        <th>Counterparty</th>
+                        <th>Amount</th>
+                        <th>Running Balance</th>
+                        <th>Timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(!passbookData || passbookData.length === 0) ? (
+                        <tr>
+                          <td colSpan={7} style={{textAlign: 'center', padding: '3rem', color: 'var(--text-muted)'}}>
+                            No transaction ledger records found.
+                          </td>
+                        </tr>
+                      ) : (
+                        passbookData.map((entry: any) => (
+                          <tr key={entry.id}>
+                            <td><strong>#{entry.id}</strong></td>
+                            <td>
+                              <span className={`status-badge ${entry.type === 'CREDIT' ? 'approved' : 'blocked'}`}>
+                                {entry.type === 'CREDIT' ? '↓ CREDIT' : '↑ DEBIT'}
+                              </span>
+                            </td>
+                            <td><span style={{fontSize:'0.8rem', textTransform:'uppercase'}}>{entry.category.replace(/_/g, ' ')}</span></td>
+                            <td>{entry.counterparty || 'N/A'}</td>
+                            <td>
+                              <strong style={{color: entry.type === 'CREDIT' ? 'var(--success)' : 'var(--danger)'}}>
+                                {entry.type === 'CREDIT' ? '+' : '-'}${entry.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                              </strong>
+                            </td>
+                            <td><strong>${entry.balance_after.toLocaleString(undefined, {minimumFractionDigits: 2})}</strong></td>
+                            <td>{new Date(entry.timestamp).toLocaleString()}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Active Page: Profile & Security Settings */}
+        {activePage === 'profile' && (
+          <>
+            <header className="page-header">
+              <div>
+                <h1 className="page-title">Profile & Security Settings</h1>
+                <p className="page-subtitle">Update contact details, configure transaction limits, and toggle safety freeze locks</p>
+              </div>
+            </header>
+
+            <div className="page-content">
+              {settingsStatus && (
+                <div 
+                  className={settingsStatus.type === 'success' ? 'status-badge approved' : 'auth-error-alert'}
+                  style={{ marginBottom: '1.5rem', width: '100%', padding: '0.8rem', borderRadius: '6px' }}
+                >
+                  {settingsStatus.message}
+                </div>
+              )}
+
+              <div className="grid-row-2">
+                
+                {/* Account Security Control Card */}
+                <div className="glass-card">
+                  <div className="card-header">
+                    <h2 className="card-title"><Lock className="menu-icon" /> Bank Account Safety Lock</h2>
+                  </div>
+                  
+                  {user.is_frozen ? (
+                    <div style={{ padding: '1rem', backgroundColor: 'rgba(239, 68, 68, 0.08)', border: '1px solid var(--danger)', borderRadius: '8px' }}>
+                      <p style={{ color: 'var(--danger)', fontSize: '0.88rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+                        ⚠️ YOUR ACCOUNT IS CURRENTLY FROZEN
+                      </p>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.5', marginBottom: '1.25rem' }}>
+                        To prevent scams, all outgoing transactions are suspended. To restore account functionality, please verify your Security MPIN.
+                      </p>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <input
+                          type="password"
+                          maxLength={6}
+                          placeholder="Enter 4-6 digit MPIN"
+                          value={unfreezeMpin}
+                          onChange={(e) => setUnfreezeMpin(e.target.value.replace(/\D/g, ''))}
+                          style={{ flex: 1 }}
+                        />
+                        <button
+                          type="button"
+                          className="status-badge approved"
+                          disabled={!unfreezeMpin || settingsLoading}
+                          onClick={async () => {
+                            setSettingsLoading(true);
+                            setSettingsStatus(null);
+                            try {
+                              await api.securityOps.unfreeze({ mpin: unfreezeMpin });
+                              refreshUser();
+                              refetchSecurityLog();
+                              setUnfreezeMpin('');
+                              setSettingsStatus({ type: 'success', message: 'Account unfrozen successfully!' });
+                            } catch (err: any) {
+                              setSettingsStatus({ type: 'error', message: err.message || 'Incorrect MPIN' });
+                            }
+                            setSettingsLoading(false);
+                          }}
+                          style={{ border: 'none', cursor: 'pointer', padding: '0 1rem' }}
+                        >
+                          Unfreeze
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.5', marginBottom: '1.25rem' }}>
+                        If you suspect any fraudulent activity or lost your device, freeze your account instantly. Outgoing funds transfers will be locked immediately.
+                      </p>
+                      <button
+                        type="button"
+                        className="status-badge blocked"
+                        onClick={async () => {
+                          setSettingsLoading(true);
+                          setSettingsStatus(null);
+                          try {
+                            await api.securityOps.freeze();
+                            refreshUser();
+                            refetchSecurityLog();
+                            setSettingsStatus({ type: 'success', message: 'Account frozen successfully.' });
+                          } catch (err: any) {
+                            setSettingsStatus({ type: 'error', message: err.message || 'Failed to freeze account.' });
+                          }
+                          setSettingsLoading(false);
+                        }}
+                        style={{ border: 'none', cursor: 'pointer', width: '100%', padding: '0.75rem', fontWeight: 600 }}
+                      >
+                        🔴 Freeze Account Now
+                      </button>
+                    </div>
+                  )}
+
+                  <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', margin: '1.5rem 0' }} />
+
+                  {/* Transaction Limits */}
+                  <div className="card-header" style={{ padding: 0, marginBottom: '0.75rem' }}>
+                    <h3 style={{ color: '#fff', fontSize: '0.9rem' }}>Configure Daily Transfer Limit</h3>
+                  </div>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    setSettingsLoading(true);
+                    setSettingsStatus(null);
+                    try {
+                      await api.securityOps.updateLimit({ limit: Number(profileLimit), mpin: profileLimitMpin });
+                      refreshUser();
+                      refetchSecurityLog();
+                      setProfileLimitMpin('');
+                      setSettingsStatus({ type: 'success', message: 'Daily transfer limit updated successfully.' });
+                    } catch (err: any) {
+                      setSettingsStatus({ type: 'error', message: err.message || 'Failed to update limit.' });
+                    }
+                    setSettingsLoading(false);
+                  }}>
+                    <div className="form-input-group">
+                      <label>Limit Amount ($)</label>
+                      <input
+                        type="number"
+                        value={profileLimit}
+                        onChange={(e) => setProfileLimit(e.target.value)}
+                        required
+                        min="1"
+                      />
+                    </div>
+                    <div className="form-input-group">
+                      <label>Security MPIN Confirmation</label>
+                      <input
+                        type="password"
+                        maxLength={6}
+                        value={profileLimitMpin}
+                        onChange={(e) => setProfileLimitMpin(e.target.value.replace(/\D/g, ''))}
+                        required
+                        placeholder="Enter MPIN to save changes"
+                      />
+                    </div>
+                    <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
+                      Update Limit
+                    </button>
+                  </form>
+                </div>
+
+                {/* Profile Information Card */}
+                <div className="glass-card">
+                  <div className="card-header">
+                    <h2 className="card-title"><Users className="menu-icon" /> Personal Details (Immutable KYC)</h2>
+                  </div>
+                  
+                  {/* Read-only KYC details */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', backgroundColor: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '8px', fontSize: '0.8rem', marginBottom: '1.5rem' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>LEGAL FULL NAME</span>
+                      <p style={{ color: '#fff', fontWeight: 600 }}>{user.full_name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>ACCOUNT NUMBER</span>
+                      <p style={{ color: '#fff', fontWeight: 600 }}>{user.account_number || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>AADHAAR CARD</span>
+                      <p style={{ color: '#fff' }}>XXXX-XXXX-{user.aadhaar_last4 || 'XXXX'}</p>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>PAN CARD NUMBER</span>
+                      <p style={{ color: '#fff' }}>{user.pan_number || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    setSettingsLoading(true);
+                    setSettingsStatus(null);
+                    try {
+                      await api.auth.updateProfile({ phone: profilePhone, address: profileAddress, email: profileEmail });
+                      refreshUser();
+                      refetchSecurityLog();
+                      setSettingsStatus({ type: 'success', message: 'Profile details updated successfully.' });
+                    } catch (err: any) {
+                      setSettingsStatus({ type: 'error', message: err.message || 'Failed to update profile.' });
+                    }
+                    setSettingsLoading(false);
+                  }}>
+                    <div className="form-input-group">
+                      <label>Email Address</label>
+                      <input
+                        type="email"
+                        value={profileEmail}
+                        onChange={(e) => setProfileEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="form-input-group">
+                      <label>Mobile Number</label>
+                      <input
+                        type="tel"
+                        value={profilePhone}
+                        onChange={(e) => setProfilePhone(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="form-input-group">
+                      <label>Residential Address</label>
+                      <textarea
+                        value={profileAddress}
+                        onChange={(e) => setProfileAddress(e.target.value)}
+                        required
+                        rows={2}
+                        style={{
+                          width: '100%',
+                          padding: '0.6rem',
+                          borderRadius: '6px',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                          color: '#fff',
+                          resize: 'vertical',
+                          fontFamily: 'inherit',
+                          fontSize: '0.85rem'
+                        }}
+                      />
+                    </div>
+                    <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
+                      Update Profile Information
+                    </button>
+                  </form>
+                </div>
+
+              </div>
+
+              {/* Security Logs Card */}
+              <div className="glass-card" style={{ marginTop: '1.5rem' }}>
+                <div className="card-header">
+                  <h2 className="card-title"><Clock className="menu-icon" /> Security Activity & Audit Trails</h2>
+                </div>
+                <div className="data-table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Event Log Type</th>
+                        <th>Details Context</th>
+                        <th>Device/Location Signature</th>
+                        <th>Timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(!securityActivityLog || securityActivityLog.length === 0) ? (
+                        <tr>
+                          <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                            No security activities logged yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        securityActivityLog.map((log: any) => (
+                          <tr key={log.id}>
+                            <td>
+                              <span className={`status-badge ${
+                                log.event_type.includes('FAIL') || log.event_type.includes('FREEZE') ? 'blocked' : 'approved'
+                              }`}>
+                                {log.event_type}
+                              </span>
+                            </td>
+                            <td style={{fontSize:'0.8rem'}}>{log.details || 'Event logged successfully'}</td>
+                            <td>{log.device || 'Windows-Chrome'}</td>
+                            <td>{new Date(log.timestamp).toLocaleString()}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+          </>
+        )}
+
       </div>
 
       {/* MODAL 1: Real-Time Transaction Orchestration Visualizer */}
@@ -1778,6 +2704,136 @@ const AppContent: React.FC = () => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* DEPOSIT MODAL */}
+      {depositModalOpen && (
+        <div className="orchestrator-overlay" style={{ zIndex: 1100 }}>
+          <div className="orchestrator-modal" style={{ maxWidth: '400px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ color: '#fff', fontSize: '1.2rem' }}>Add Money to Account</h2>
+              <button onClick={() => setDepositModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <X className="menu-icon" />
+              </button>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (!depositAmount) return;
+              setDepositLoading(true);
+              depositMutation.mutate({ amount: Number(depositAmount), category: depositCategory }, {
+                onSettled: () => setDepositLoading(false)
+              });
+            }}>
+              <div className="form-input-group">
+                <label>Deposit Source / Category</label>
+                <select value={depositCategory} onChange={(e) => setDepositCategory(e.target.value)} required>
+                  <option value="UPI_RECEIVE">UPI Deposit</option>
+                  <option value="BANK_TRANSFER">Bank Wire Transfer</option>
+                  <option value="SALARY">Direct Salary Credit</option>
+                  <option value="REFUND">Merchant Refund Credit</option>
+                </select>
+              </div>
+              <div className="form-input-group">
+                <label>Amount ($)</label>
+                <input
+                  type="number"
+                  value={depositAmount}
+                  onChange={(e) => setDepositAmount(e.target.value)}
+                  placeholder="e.g. 5000"
+                  required
+                  min="1"
+                />
+              </div>
+              <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: '1rem' }} disabled={depositLoading}>
+                {depositLoading ? 'Processing Credit...' : 'Confirm Deposit'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* SESSION TIMEOUT WARNING MODAL */}
+      {showTimeoutWarning && (
+        <div className="orchestrator-overlay" style={{ zIndex: 1200 }}>
+          <div className="orchestrator-modal" style={{ maxWidth: '400px', textAlign: 'center', border: '1px solid var(--warning)' }}>
+            <AlertTriangle style={{ width: '48px', height: '48px', color: 'var(--warning)', margin: '0 auto 1rem' }} />
+            <h2 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '0.5rem' }}>Inactivity Timeout Warning</h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.5', marginBottom: '1.5rem' }}>
+              Your bank session has been inactive for 9 minutes. For security compliance, you will be logged out in 60 seconds.
+            </p>
+            <button
+              onClick={() => {
+                setShowTimeoutWarning(false);
+                refetchDash();
+              }}
+              className="btn-primary"
+              style={{ width: '100%' }}
+            >
+              Extend Banking Session
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* GUIDED ONBOARDING TOUR */}
+      {tourStep !== null && (
+        <div className="orchestrator-overlay" style={{ zIndex: 1300, backgroundColor: 'rgba(0,0,0,0.85)' }}>
+          <div className="orchestrator-modal" style={{ maxWidth: '420px', border: '1px solid var(--primary)', padding: '2rem', textAlign: 'center' }}>
+            <Compass style={{ width: '48px', height: '48px', color: 'var(--primary)', margin: '0 auto 1.25rem' }} />
+            
+            <h3 style={{ color: '#fff', fontSize: '1.15rem', marginBottom: '0.75rem' }}>
+              {tourStep === 1 && "Step 1: Your Account & Balance"}
+              {tourStep === 2 && "Step 2: Protected Transaction History"}
+              {tourStep === 3 && "Step 3: Transfer Funds System"}
+            </h3>
+
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '2rem' }}>
+              {tourStep === 1 && "Here is your available neo-banking balance, unique 12-digit account number, and daily limits. You can add demo funds instantly using the 'Add Money' action."}
+              {tourStep === 2 && "Every transfer is checked by our hybrid decision engines. Real-time decision logs, calculated risk percentages, and consensus timelines appear here."}
+              {tourStep === 3 && "Ready to transfer? Send standard bank transfers or instant P2P payments by account number. NIRNAY's multi-agent supervisor watches for scam signals."}
+            </p>
+
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+              <button
+                onClick={async () => {
+                  setTourStep(null);
+                  try {
+                    await api.auth.completeTour();
+                    refreshUser();
+                  } catch (e) {
+                    console.error('Failed to complete tour:', e);
+                  }
+                }}
+                className="logout-btn"
+                style={{ padding: '0.6rem 1rem', fontSize: '0.8rem' }}
+              >
+                Skip Tour
+              </button>
+              
+              <button
+                onClick={async () => {
+                  if (tourStep < 3) {
+                    setTourStep(prev => prev! + 1);
+                    if (tourStep === 1) setActivePage('dashboard');
+                    if (tourStep === 2) setActivePage('transfer');
+                  } else {
+                    setTourStep(null);
+                    try {
+                      await api.auth.completeTour();
+                      refreshUser();
+                    } catch (e) {
+                      console.error('Failed to complete tour:', e);
+                    }
+                  }
+                }}
+                className="btn-primary"
+                style={{ flex: 1, marginTop: 0, padding: '0.6rem' }}
+              >
+                {tourStep < 3 ? 'Next Guide Step' : 'Finish Tour'}
+              </button>
+            </div>
           </div>
         </div>
       )}
