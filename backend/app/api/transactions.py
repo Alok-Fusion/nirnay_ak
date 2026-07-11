@@ -322,3 +322,104 @@ def get_transaction_audit(
         "reason_codes": ml_risk_res.get("reason_codes", []),
         "execution_time_ms": audit.execution_time_ms
     }
+
+
+@router.get("/{transaction_id}/report")
+def get_explainability_report(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Generate a full AI explainability report for a given transaction.
+    Returns structured data suitable for rendering a downloadable audit report.
+    """
+    from app.models.models import Recipient
+    from app.services.ml_engine import MLEngine
+
+    tx = db.query(Transaction).filter(
+        Transaction.id == transaction_id,
+        Transaction.sender_id == current_user.id
+    ).first()
+
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    audit = db.query(AuditLog).filter(AuditLog.transaction_id == tx.id).first()
+    recipient = db.query(Recipient).filter(Recipient.id == tx.recipient_id).first()
+
+    # Parse audit data
+    try:
+        agent_logs = json.loads(audit.agent_logs or "[]") if audit else []
+    except Exception:
+        agent_logs = []
+
+    try:
+        rule_triggers = json.loads(audit.rule_triggers or "[]") if audit else []
+    except Exception:
+        rule_triggers = []
+
+    try:
+        ml_features = json.loads(audit.ml_features or "{}") if audit else {}
+    except Exception:
+        ml_features = {}
+
+    # Get ML SHAP values
+    ml_risk_res = MLEngine.evaluate_risk(
+        db=db,
+        sender_id=tx.sender_id,
+        recipient_id=tx.recipient_id,
+        amount=tx.amount,
+        device=tx.device,
+        location=tx.location
+    )
+
+    shap_values = ml_risk_res.get("shap_values", {})
+    reason_codes = ml_risk_res.get("reason_codes", [])
+
+    # Build structured report
+    report = {
+        "report_title": f"NIRNAY AI Explainability Report — Transaction #{tx.id}",
+        "generated_at": __import__("datetime").datetime.utcnow().isoformat(),
+        "transaction": {
+            "id": tx.id,
+            "amount": tx.amount,
+            "timestamp": tx.timestamp.isoformat() if tx.timestamp else "",
+            "status": tx.status,
+            "risk_score": tx.risk_score,
+            "device": tx.device,
+            "location": tx.location,
+        },
+        "recipient": {
+            "name": recipient.name if recipient else "Unknown",
+            "bank": recipient.bank_name if recipient else "Unknown",
+            "trust_score": recipient.trust_score if recipient else 0,
+        },
+        "risk_analysis": {
+            "final_risk_score": tx.risk_score,
+            "risk_tier": (
+                "LOW" if (tx.risk_score or 0) < 30 else
+                "MEDIUM" if (tx.risk_score or 0) < 60 else
+                "HIGH" if (tx.risk_score or 0) < 80 else
+                "CRITICAL"
+            ),
+            "ml_features": ml_features,
+            "shap_values": shap_values,
+            "reason_codes": reason_codes,
+        },
+        "rule_engine": {
+            "triggered_rules": rule_triggers,
+            "total_rules_evaluated": 8,
+        },
+        "agent_reasoning": {
+            "agent_logs": agent_logs,
+            "total_agents_consulted": len(set(log.get("agent", "") for log in agent_logs if isinstance(log, dict))),
+        },
+        "decision": {
+            "final_status": tx.status,
+            "auth_steps_required": tx.auth_steps.split(",") if tx.auth_steps else [],
+            "execution_time_ms": audit.execution_time_ms if audit else 0,
+        },
+    }
+
+    return report
+

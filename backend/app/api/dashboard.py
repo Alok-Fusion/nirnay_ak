@@ -140,3 +140,53 @@ def get_analytics(
             "BLOCKED": len(blocked)
         },
     }
+
+@router.get("/heatmap")
+def get_transaction_heatmap(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Return a 7x24 heatmap grid of transaction activity (day-of-week × hour-of-day).
+    Each cell contains: count of transactions, average risk score, and total volume.
+    """
+    all_txs = db.query(Transaction).filter(
+        Transaction.sender_id == current_user.id
+    ).all()
+
+    # Initialize 7 days × 24 hours grid
+    # Day 0 = Monday, Day 6 = Sunday
+    grid = {}
+    for day in range(7):
+        for hour in range(24):
+            key = f"{day}_{hour}"
+            grid[key] = {"count": 0, "total_risk": 0.0, "total_volume": 0.0}
+
+    for tx in all_txs:
+        if tx.timestamp:
+            day = tx.timestamp.weekday()  # 0=Mon, 6=Sun
+            hour = tx.timestamp.hour
+            key = f"{day}_{hour}"
+            grid[key]["count"] += 1
+            grid[key]["total_risk"] += (tx.risk_score or 0)
+            grid[key]["total_volume"] += tx.amount
+
+    # Build response
+    day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    heatmap = []
+    for day in range(7):
+        row = []
+        for hour in range(24):
+            key = f"{day}_{hour}"
+            cell = grid[key]
+            avg_risk = round(cell["total_risk"] / cell["count"], 1) if cell["count"] > 0 else 0
+            row.append({
+                "day": day_names[day],
+                "hour": hour,
+                "count": cell["count"],
+                "avg_risk": avg_risk,
+                "volume": round(cell["total_volume"], 2)
+            })
+        heatmap.append(row)
+
+    return {"heatmap": heatmap, "days": day_names}
+

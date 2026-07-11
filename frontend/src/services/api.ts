@@ -86,6 +86,8 @@ export const api = {
       }),
     getAuditLog: (transactionId: number) =>
       request<any>(`/transactions/${transactionId}/audit`),
+    getReport: (transactionId: number) =>
+      request<any>(`/transactions/${transactionId}/report`),
   },
 
   // Dashboard / User Details
@@ -93,6 +95,7 @@ export const api = {
     summary: () => request<any>('/dashboard/summary'),
     digitalTwin: () => request<any>('/dashboard/digital-twin'),
     analytics: () => request<any>('/dashboard/analytics'),
+    heatmap: () => request<any>('/dashboard/heatmap'),
   },
 
   // Admin API
@@ -100,6 +103,16 @@ export const api = {
     escalations: () => request<any[]>('/admin/escalations'),
     override: (data: { transaction_id: number; action: string }) =>
       request<any>('/admin/override', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
+
+  // Scam Drills API
+  drills: {
+    getScenario: () => request<any>('/drills/scenario'),
+    submitAnswer: (data: { scenario_id: string; selected_option: string }) =>
+      request<any>('/drills/answer', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

@@ -18,7 +18,10 @@ import {
   HelpCircle,
   Clock,
   Compass,
-  Monitor
+  Monitor,
+  Crosshair,
+  Download,
+  FileText
 } from 'lucide-react';
 import './App.css';
 
@@ -31,7 +34,7 @@ const queryClient = new QueryClient({
   },
 });
 
-type PageType = 'dashboard' | 'transfer' | 'security' | 'analytics' | 'admin';
+type PageType = 'dashboard' | 'transfer' | 'security' | 'analytics' | 'admin' | 'drills';
 
 const AppContent: React.FC = () => {
   const { user, loading, login, register, logout, refreshUser } = useAuth();
@@ -86,6 +89,14 @@ const AppContent: React.FC = () => {
   const [auditModalOpen, setAuditModalOpen] = useState<boolean>(false);
   const [auditTxId, setAuditTxId] = useState<number | null>(null);
 
+  // Scam Drill Simulator state
+  const [drillScenario, setDrillScenario] = useState<any>(null);
+  const [drillSelectedOption, setDrillSelectedOption] = useState<string>('');
+  const [drillResult, setDrillResult] = useState<any>(null);
+  const [drillLoading, setDrillLoading] = useState<boolean>(false);
+  const [drillScore, setDrillScore] = useState<{correct: number; total: number}>({correct: 0, total: 0});
+  const [drillReportLoading, setDrillReportLoading] = useState<boolean>(false);
+
   // Queries
   const { data: dashSummary, refetch: refetchDash } = useQuery({
     queryKey: ['dashSummary'],
@@ -120,6 +131,12 @@ const AppContent: React.FC = () => {
   const { data: analyticsData, refetch: refetchAnalytics } = useQuery({
     queryKey: ['analytics'],
     queryFn: api.dashboard.analytics,
+    enabled: !!user,
+  });
+
+  const { data: heatmapData } = useQuery({
+    queryKey: ['heatmap'],
+    queryFn: api.dashboard.heatmap,
     enabled: !!user,
   });
 
@@ -462,6 +479,13 @@ const AppContent: React.FC = () => {
             className={`menu-item ${activePage === 'admin' ? 'active' : ''}`}
           >
             <ShieldAlert className="menu-icon" /> Admin Escalations
+          </button>
+
+          <button 
+            onClick={() => setActivePage('drills')} 
+            className={`menu-item ${activePage === 'drills' ? 'active' : ''}`}
+          >
+            <Crosshair className="menu-icon" /> Scam Drills
           </button>
         </nav>
 
@@ -984,6 +1008,64 @@ const AppContent: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                  {/* Transaction Velocity Heatmap */}
+                  {heatmapData?.heatmap && (
+                    <div className="glass-card" style={{marginTop: '1.5rem'}}>
+                      <div className="card-header">
+                        <h2 className="card-title">Transaction Velocity Heatmap</h2>
+                      </div>
+                      <p style={{fontSize:'0.8rem', color:'var(--text-muted)', padding:'0 1.5rem'}}>7-day × 24-hour grid — brighter cells indicate higher transaction activity and risk concentration</p>
+                      <div style={{padding: '1rem 1.5rem', overflowX: 'auto'}}>
+                        <svg width="100%" viewBox="0 0 650 210" style={{minWidth: '600px'}}>
+                          {/* Hour labels */}
+                          {[0,3,6,9,12,15,18,21].map(h => (
+                            <text key={`h-${h}`} x={50 + h * 25 + 10} y="12" fill="var(--text-muted)" fontSize="7" textAnchor="middle">
+                              {h === 0 ? '12a' : h < 12 ? `${h}a` : h === 12 ? '12p' : `${h-12}p`}
+                            </text>
+                          ))}
+                          {/* Day labels + cells */}
+                          {heatmapData.heatmap.map((row: any[], dayIdx: number) => (
+                            <g key={`day-${dayIdx}`}>
+                              <text x="0" y={25 + dayIdx * 26 + 15} fill="var(--text-muted)" fontSize="8" dominantBaseline="middle">
+                                {row[0]?.day}
+                              </text>
+                              {row.map((cell: any, hourIdx: number) => {
+                                const intensity = cell.count > 0 
+                                  ? Math.min(1, cell.avg_risk / 100) 
+                                  : 0;
+                                const hasActivity = cell.count > 0;
+                                const fillColor = !hasActivity 
+                                  ? 'rgba(255,255,255,0.02)' 
+                                  : intensity > 0.6 
+                                    ? `rgba(239, 68, 68, ${0.3 + intensity * 0.6})`
+                                    : intensity > 0.3 
+                                      ? `rgba(245, 158, 11, ${0.3 + intensity * 0.5})`
+                                      : `rgba(99, 102, 241, ${0.2 + intensity * 0.5})`;
+                                return (
+                                  <rect
+                                    key={`${dayIdx}-${hourIdx}`}
+                                    x={50 + hourIdx * 25}
+                                    y={25 + dayIdx * 26}
+                                    width="22" height="22" rx="3"
+                                    fill={fillColor}
+                                    stroke="rgba(255,255,255,0.04)"
+                                    strokeWidth="0.5"
+                                  >
+                                    <title>{`${cell.day} ${hourIdx}:00 — ${cell.count} txn(s), Risk: ${cell.avg_risk}%, Vol: $${cell.volume}`}</title>
+                                  </rect>
+                                );
+                              })}
+                            </g>
+                          ))}
+                        </svg>
+                      </div>
+                      <div style={{display:'flex', justifyContent:'center', gap:'1.5rem', fontSize:'0.75rem', paddingBottom:'1rem'}}>
+                        <span><span style={{display:'inline-block', width:'10px', height:'10px', borderRadius:'2px', backgroundColor:'rgba(99,102,241,0.5)', marginRight:'4px', verticalAlign:'middle'}}></span> Low Risk</span>
+                        <span><span style={{display:'inline-block', width:'10px', height:'10px', borderRadius:'2px', backgroundColor:'rgba(245,158,11,0.6)', marginRight:'4px', verticalAlign:'middle'}}></span> Medium Risk</span>
+                        <span><span style={{display:'inline-block', width:'10px', height:'10px', borderRadius:'2px', backgroundColor:'rgba(239,68,68,0.7)', marginRight:'4px', verticalAlign:'middle'}}></span> High Risk</span>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -1067,6 +1149,195 @@ const AppContent: React.FC = () => {
                   </table>
                 </div>
               </div>
+            </div>
+          </>
+        )}
+
+        {/* Active Page: Scam Drill Simulator */}
+        {activePage === 'drills' && (
+          <>
+            <header className="page-header">
+              <div>
+                <h1 className="page-title">Scam Drill Simulator</h1>
+                <p className="page-subtitle">Interactive social engineering awareness training — can you spot the scam?</p>
+              </div>
+              {drillScore.total > 0 && (
+                <div style={{textAlign:'right'}}>
+                  <span style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>SESSION SCORE</span>
+                  <p style={{fontSize:'1.6rem', fontWeight:700, color: drillScore.correct / drillScore.total >= 0.7 ? 'var(--success)' : 'var(--warning)'}}>
+                    {drillScore.correct}/{drillScore.total}
+                  </p>
+                </div>
+              )}
+            </header>
+
+            <div className="page-content">
+              {!drillScenario && !drillResult ? (
+                <div className="glass-card" style={{textAlign:'center', padding:'3rem'}}>
+                  <Crosshair style={{width:'48px', height:'48px', color:'var(--primary)', margin:'0 auto 1.5rem'}} />
+                  <h3 style={{color:'#fff', marginBottom:'0.75rem', fontSize:'1.2rem'}}>Ready to Test Your Scam Awareness?</h3>
+                  <p style={{color:'var(--text-muted)', fontSize:'0.9rem', marginBottom:'2rem', maxWidth:'500px', margin:'0 auto 2rem'}}>
+                    NIRNAY will present you with realistic social engineering scenarios. 
+                    Your job is to identify the safest course of action. Each drill is based on 
+                    real scam patterns reported in India.
+                  </p>
+                  <button 
+                    className="action-btn primary"
+                    onClick={async () => {
+                      setDrillLoading(true);
+                      try {
+                        const scenario = await api.drills.getScenario();
+                        setDrillScenario(scenario);
+                        setDrillSelectedOption('');
+                        setDrillResult(null);
+                      } catch (e) {
+                        console.error('Failed to load drill scenario:', e);
+                      }
+                      setDrillLoading(false);
+                    }}
+                    disabled={drillLoading}
+                    style={{padding:'0.8rem 2rem', fontSize:'1rem'}}
+                  >
+                    {drillLoading ? 'Loading...' : '🎯 Start Drill'}
+                  </button>
+                </div>
+              ) : drillResult ? (
+                /* Results Screen */
+                <div className="glass-card" style={{padding:'2rem'}}>
+                  <div style={{textAlign:'center', marginBottom:'2rem'}}>
+                    {drillResult.is_correct ? (
+                      <>
+                        <CheckCircle2 style={{width:'48px', height:'48px', color:'var(--success)', margin:'0 auto 1rem'}} />
+                        <h3 style={{color:'var(--success)', fontSize:'1.3rem'}}>Correct! You Spotted the Scam</h3>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle style={{width:'48px', height:'48px', color:'var(--danger)', margin:'0 auto 1rem'}} />
+                        <h3 style={{color:'var(--danger)', fontSize:'1.3rem'}}>Incorrect — This Was a Scam</h3>
+                        <p style={{color:'var(--text-muted)', fontSize:'0.85rem', marginTop:'0.5rem'}}>
+                          The correct answer was: <strong style={{color:'var(--success)'}}>{drillResult.correct_answer_text}</strong>
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  <div style={{backgroundColor:'rgba(255,255,255,0.03)', borderRadius:'8px', padding:'1.25rem', marginBottom:'1.5rem'}}>
+                    <h4 style={{color:'#fff', fontSize:'0.9rem', marginBottom:'0.5rem'}}>Why?</h4>
+                    <p style={{color:'var(--text-secondary)', fontSize:'0.85rem', lineHeight:'1.6'}}>{drillResult.explanation}</p>
+                  </div>
+
+                  <div style={{marginBottom:'1.5rem'}}>
+                    <h4 style={{color:'#fff', fontSize:'0.9rem', marginBottom:'0.75rem'}}>🚩 Red Flags to Watch For</h4>
+                    <div style={{display:'flex', flexDirection:'column', gap:'0.4rem'}}>
+                      {drillResult.red_flags?.map((flag: string, i: number) => (
+                        <div key={i} style={{display:'flex', alignItems:'center', gap:'0.5rem', fontSize:'0.85rem'}}>
+                          <span style={{color:'var(--danger)'}}>▸</span>
+                          <span style={{color:'var(--text-secondary)'}}>{flag}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{display:'flex', gap:'0.5rem', padding:'0.75rem', backgroundColor:'rgba(99,102,241,0.08)', borderRadius:'8px', marginBottom:'1.5rem'}}>
+                    <span style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>Category: <strong style={{color:'var(--primary)'}}>{drillResult.category?.replace(/_/g, ' ')}</strong></span>
+                    <span style={{fontSize:'0.8rem', color:'var(--text-muted)', marginLeft:'auto'}}>Difficulty: <strong style={{color: drillResult.difficulty === 'HARD' ? 'var(--danger)' : drillResult.difficulty === 'MEDIUM' ? 'var(--warning)' : 'var(--success)'}}>{drillResult.difficulty}</strong></span>
+                  </div>
+
+                  <button 
+                    className="action-btn primary"
+                    onClick={async () => {
+                      setDrillLoading(true);
+                      setDrillResult(null);
+                      try {
+                        const scenario = await api.drills.getScenario();
+                        setDrillScenario(scenario);
+                        setDrillSelectedOption('');
+                      } catch (e) {
+                        console.error('Failed to load next drill:', e);
+                      }
+                      setDrillLoading(false);
+                    }}
+                    disabled={drillLoading}
+                    style={{width:'100%', padding:'0.8rem'}}
+                  >
+                    {drillLoading ? 'Loading...' : '➡️ Next Drill'}
+                  </button>
+                </div>
+              ) : drillScenario ? (
+                /* Active Scenario */
+                <div className="glass-card" style={{padding:'2rem'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem'}}>
+                    <div>
+                      <span style={{fontSize:'0.7rem', padding:'0.2rem 0.5rem', backgroundColor:'rgba(99,102,241,0.15)', border:'1px solid rgba(99,102,241,0.3)', color:'var(--primary)', borderRadius:'4px', marginRight:'0.5rem'}}>
+                        {drillScenario.category?.replace(/_/g, ' ')}
+                      </span>
+                      <span style={{fontSize:'0.7rem', padding:'0.2rem 0.5rem', backgroundColor: drillScenario.difficulty === 'HARD' ? 'rgba(239,68,68,0.12)' : drillScenario.difficulty === 'MEDIUM' ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.12)', border: `1px solid ${drillScenario.difficulty === 'HARD' ? 'rgba(239,68,68,0.3)' : drillScenario.difficulty === 'MEDIUM' ? 'rgba(245,158,11,0.3)' : 'rgba(34,197,94,0.3)'}`, color: drillScenario.difficulty === 'HARD' ? 'var(--danger)' : drillScenario.difficulty === 'MEDIUM' ? 'var(--warning)' : 'var(--success)', borderRadius:'4px'}}>
+                        {drillScenario.difficulty}
+                      </span>
+                    </div>
+                  </div>
+
+                  <h3 style={{color:'#fff', fontSize:'1.15rem', marginBottom:'1.25rem'}}>{drillScenario.title}</h3>
+                  
+                  <div style={{backgroundColor:'rgba(255,255,255,0.03)', borderRadius:'8px', padding:'1.25rem', marginBottom:'1.5rem', borderLeft:'3px solid var(--primary)'}}>
+                    <p style={{color:'var(--text-secondary)', fontSize:'0.9rem', lineHeight:'1.7'}}>{drillScenario.narrative}</p>
+                  </div>
+
+                  <h4 style={{color:'#fff', fontSize:'0.95rem', marginBottom:'1rem'}}>{drillScenario.question}</h4>
+                  
+                  <div style={{display:'flex', flexDirection:'column', gap:'0.6rem', marginBottom:'2rem'}}>
+                    {drillScenario.options?.map((opt: any) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setDrillSelectedOption(opt.id)}
+                        style={{
+                          display:'flex', alignItems:'center', gap:'0.75rem',
+                          padding:'0.9rem 1rem', borderRadius:'8px',
+                          border: drillSelectedOption === opt.id ? '2px solid var(--primary)' : '1px solid rgba(255,255,255,0.08)',
+                          backgroundColor: drillSelectedOption === opt.id ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.02)',
+                          color: '#fff', cursor:'pointer', textAlign:'left', fontSize:'0.88rem',
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        <span style={{
+                          width:'28px', height:'28px', borderRadius:'50%', 
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                          backgroundColor: drillSelectedOption === opt.id ? 'var(--primary)' : 'rgba(255,255,255,0.06)',
+                          fontSize:'0.75rem', fontWeight:700, flexShrink:0
+                        }}>{opt.id}</span>
+                        {opt.text}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button 
+                    className="action-btn primary"
+                    disabled={!drillSelectedOption || drillLoading}
+                    onClick={async () => {
+                      if (!drillSelectedOption) return;
+                      setDrillLoading(true);
+                      try {
+                        const result = await api.drills.submitAnswer({
+                          scenario_id: drillScenario.id,
+                          selected_option: drillSelectedOption,
+                        });
+                        setDrillResult(result);
+                        setDrillScenario(null);
+                        setDrillScore(prev => ({
+                          correct: prev.correct + (result.is_correct ? 1 : 0),
+                          total: prev.total + 1,
+                        }));
+                      } catch (e) {
+                        console.error('Failed to submit drill answer:', e);
+                      }
+                      setDrillLoading(false);
+                    }}
+                    style={{width:'100%', padding:'0.8rem', fontSize:'0.95rem'}}
+                  >
+                    {drillLoading ? 'Evaluating...' : '🔍 Submit Answer'}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </>
         )}
@@ -1427,6 +1698,84 @@ const AppContent: React.FC = () => {
                     ))}
                   </div>
                 </div>
+
+                {/* Download AI Report Button */}
+                <button
+                  className="action-btn primary"
+                  disabled={drillReportLoading}
+                  onClick={async () => {
+                    if (!auditTxId) return;
+                    setDrillReportLoading(true);
+                    try {
+                      const report = await api.transactions.getReport(auditTxId);
+                      // Generate markdown report text
+                      const md = [
+                        `# ${report.report_title}`,
+                        `**Generated:** ${new Date(report.generated_at).toLocaleString()}`,
+                        '',
+                        '## Transaction Details',
+                        `| Field | Value |`,
+                        `|-------|-------|`,
+                        `| ID | ${report.transaction.id} |`,
+                        `| Amount | $${report.transaction.amount.toLocaleString()} |`,
+                        `| Status | ${report.transaction.status} |`,
+                        `| Risk Score | ${report.transaction.risk_score}% |`,
+                        `| Device | ${report.transaction.device} |`,
+                        `| Location | ${report.transaction.location} |`,
+                        `| Timestamp | ${report.transaction.timestamp} |`,
+                        '',
+                        '## Recipient',
+                        `- **Name:** ${report.recipient.name}`,
+                        `- **Bank:** ${report.recipient.bank}`,
+                        `- **Trust Score:** ${report.recipient.trust_score}%`,
+                        '',
+                        '## Risk Analysis',
+                        `- **Risk Tier:** ${report.risk_analysis.risk_tier}`,
+                        `- **Final Risk Score:** ${report.risk_analysis.final_risk_score}%`,
+                        '',
+                        '### SHAP Feature Contributions',
+                        ...Object.entries(report.risk_analysis.shap_values || {}).map(
+                          ([k, v]: [string, any]) => `- **${k}:** ${v > 0 ? '+' : ''}${v}%`
+                        ),
+                        '',
+                        '### Reason Codes',
+                        ...(report.risk_analysis.reason_codes || []).map((r: string) => `- ${r}`),
+                        '',
+                        '## Rule Engine',
+                        `- Rules Evaluated: ${report.rule_engine.total_rules_evaluated}`,
+                        `- Triggered: ${report.rule_engine.triggered_rules?.length > 0 ? report.rule_engine.triggered_rules.join(', ') : 'None'}`,
+                        '',
+                        '## Agent Reasoning Chain',
+                        ...(report.agent_reasoning.agent_logs || []).map(
+                          (log: any) => `- **[${log.agent}]** ${log.action}: ${log.message}`
+                        ),
+                        '',
+                        '## Final Decision',
+                        `- **Status:** ${report.decision.final_status}`,
+                        `- **Auth Steps:** ${report.decision.auth_steps_required?.join(' → ') || 'None'}`,
+                        `- **Execution Time:** ${report.decision.execution_time_ms}ms`,
+                        '',
+                        '---',
+                        '*This report was generated by NIRNAY AI Decision Intelligence Platform for regulatory compliance and audit transparency.*'
+                      ].join('\n');
+
+                      const blob = new Blob([md], { type: 'text/markdown' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `nirnay_audit_report_tx${auditTxId}.md`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    } catch (e) {
+                      console.error('Failed to generate report:', e);
+                    }
+                    setDrillReportLoading(false);
+                  }}
+                  style={{width:'100%', marginTop:'1.5rem', padding:'0.8rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem'}}
+                >
+                  <Download style={{width:'16px', height:'16px'}} />
+                  {drillReportLoading ? 'Generating Report...' : 'Download AI Explainability Report'}
+                </button>
               </div>
             )}
           </div>
