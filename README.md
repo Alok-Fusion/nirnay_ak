@@ -30,43 +30,88 @@ Modern digital banking systems suffer from a critical flaw: **traditional fraud 
 
 ---
 
-## 🏗️ Platform Architecture & Core Flow
+## 🏗️ Technical Architecture & Transaction Lifecycle
 
-NIRNAY is split into a robust FastAPI backend and a responsive, high-fidelity React + TypeScript frontend.
+NIRNAY uses a multi-layered security architecture that intercepts transactions at three distinct checkpoints: **Account Integrity (Gateway)**, **Algorithmic Assessment (Risk Engines)**, and **Cognitive Verification (Multi-Agent Reasoning)**.
+
+### Detailed System Flowchart
+```mermaid
+flowchart TD
+    classDef api fill:#6366f1,stroke:#312e81,color:#fff,stroke-width:2px;
+    classDef security fill:#ef4444,stroke:#7f1d1d,color:#fff,stroke-width:2px;
+    classDef ai fill:#10b981,stroke:#064e3b,color:#fff,stroke-width:2px;
+    classDef ledger fill:#f59e0b,stroke:#78350f,color:#fff,stroke-width:2px;
+
+    %% Entrypoints
+    Start["Initiate Transfer (P2P / Standard)"]:::api --> CheckFreeze{"Account Frozen Check?"}:::security
+    
+    %% Gateway Security Checks
+    CheckFreeze -- Yes --> BlockFreeze["Reject: Account is Frozen"]:::security
+    CheckFreeze -- No --> CheckLimit{"Daily Transfer Limit Check?"}:::security
+    
+    CheckLimit -- Exceeded --> BlockLimit["Reject: Daily Limit Exceeded"]:::security
+    CheckLimit -- Under Limit --> CheckBalance{"Insufficient Balance Check?"}:::security
+    
+    CheckBalance -- True --> BlockBalance["Reject: Insufficient Funds"]:::security
+    CheckBalance -- False --> CheckCooling{"Beneficiary Cooling Check?"}:::security
+
+    %% Cooling Period Logic
+    CheckCooling -- Created < 24h & amount > $10,000 --> ApplyCooling["Force OTP + Increase Risk score by +20"]:::security
+    CheckCooling -- Safe --> RunEngines["Parallel Evaluation Engines"]:::api
+
+    ApplyCooling --> RunEngines
+
+    %% Algorithmic Assessment
+    subgraph Algorithmic Assessment Layer
+        RunEngines --> RuleEngine["Deterministic Rule Engine\n(8 compliance policies)"]:::api
+        RunEngines --> MLEngine["ML Risk Evaluator\n(Feature weights & SHAP)"]:::api
+    end
+
+    RuleEngine --> MultiAgent["Multi-Agent AI Core (LangGraph)"]:::ai
+    MLEngine --> MultiAgent
+
+    %% Cognitive Verification
+    subgraph Cognitive Verification (LangGraph Collaborative Agents)
+        MultiAgent --> ContextAgent["Context Agent\n(Collects History Metadata)"]:::ai
+        ContextAgent --> InterpretationAgent["Interpretation Agent\n(Correlates Rules & ML Output)"]:::ai
+        InterpretationAgent --> PolicyAgent["Policy Agent\n(Verifies regulatory limits)"]:::ai
+        PolicyAgent --> MemoryAgent["Memory Agent\n(Commits profiles to memory)"]:::ai
+        PolicyAgent --> ConversationAgent["Conversation Agent\n(Prompts intent confirmation)"]:::ai
+    end
+
+    MemoryAgent --> ChallengePath{"Determine Authentication Challenge?"}:::security
+    ConversationAgent --> ChallengePath
+
+    %% Adaptive Challenges
+    ChallengePath -- Safe (Low Risk) --> ApproveTx["Auto-Approve Transaction"]:::ledger
+    ChallengePath -- Challenged (Elevated Risk) --> ShowChallenges["Challenge Screen\n(MPIN / OTP / Intent Justification)"]:::security
+
+    ShowChallenges -- Verification Fails / Scam Flags Triggered --> BlockTx["Block Transaction & Log Threat"]:::security
+    ShowChallenges -- Verification Passes --> ApproveTx
+
+    %% Ledger Operations
+    ApproveTx --> DeductSender["Deduct Sender Balance"]:::ledger
+    DeductSender --> LedgerDebit["Record DEBIT Ledger Entry"]:::ledger
+    
+    LedgerDebit --> IsP2P{"Is P2P Inter-User Transfer?"}:::ledger
+    IsP2P -- Yes --> CreditReceiver["Credit Receiver Balance"]:::ledger
+    CreditReceiver --> LedgerCredit["Record CREDIT Ledger Entry"]:::ledger
+    
+    IsP2P -- No --> Complete["Transaction Complete"]:::ledger
+    LedgerCredit --> Complete
+```
+
+### Collaborative Multi-Agent Consensus Timeline
+Every transaction evaluated by the cognitive layer goes through a consensus trace log that maps exactly how the agents reached a final decision:
 
 ```
-   User Initiation (P2P or standard transfer)
-                 │
-                 ▼
-     ┌───────────────────────┐
-     │  Account Lock Checks  │ ➔ If user.is_frozen ➔ Reject Transfer
-     └───────────┬───────────┘
-                 ▼
-     ┌───────────────────────┐
-     │  Daily limit checks   │ ➔ If rolling 24h limit exceeded ➔ Reject
-     └───────────┬───────────┘
-                 ▼
-     ┌───────────────────────┐
-     │ Beneficiary Cooling?  │ ➔ If recipient created < 24h & transfer > $10,000
-     └───────────┬───────────┘    ➔ Flag with rule trigger + force OTP
-                 ▼
-     ┌───────────────────────┐
-     │ Hybrid Risk Evaluator │
-     │  - Rule Engine        │ ➔ 8 compliance rules checked
-     │  - ML Risk Model      │ ➔ Calculate SHAP feature weightings
-     └───────────┬───────────┘
-                 ▼
-   ┌──────────────────────────┐
-   │ Multi-Agent AI Core      │ ➔ Evaluates context, scans intent justifications
-   │ (LangGraph Collaborative)│   using Groq API or local heuristics
-   └─────────────┬────────────┘
-                 ▼
-    Are challenge inputs required?
-         ├─── YES ➔ Challenge Screen (MPIN, OTP, Intent Clarification)
-         │           ├── Verification passes ➔ APPROVED ➔ Deduct balance & seed Ledger
-         │           └── Scam intent detected ➔ BLOCKED ➔ Record audit trail
-         │
-         └─── NO ➔ APPROVED ➔ Deduct balance, update twin profiles, write Ledger Entry
+┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
+│  Context Agent  │ ➔ ➔   │  Interp Agent   │ ➔ ➔   │  Policy Agent   │ ➔ ➔   │ Decision Engine │
+└────────┬────────┘       └────────┬────────┘       └────────┬────────┘       └────────┬────────┘
+         │                         │                         │                         │
+  Reads customer twin      Correlates ML outputs     Checks daily velocity     Calculates final
+  profile, device history  & triggered rule flags    compliance metrics        adaptive Auth requirements
+  & trusted beneficiaries  to score anomalies        and fraud threat cards    (Approve/Challenge/Block)
 ```
 
 ---
