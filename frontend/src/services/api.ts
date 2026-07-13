@@ -155,5 +155,30 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+  },
+
+  // Banking Products API
+  bankingProducts: {
+    cardsList: () => request<any[]>('/banking-products/cards'),
+    cardsCreate: (data: { card_type: string; spend_limit: number }) => request<any>('/banking-products/cards', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    cardsToggleStatus: (cardId: number) => request<any>(`/banking-products/cards/${cardId}/toggle-status`, {
+      method: 'POST',
+    }),
+    cardsUpdateLimit: (cardId: number, spendLimit: number) => request<any>(`/banking-products/cards/${cardId}/limit`, {
+      method: 'PUT',
+      body: JSON.stringify({ spend_limit: spendLimit }),
+    }),
+    fdList: () => request<any[]>('/banking-products/fd'),
+    fdCreate: (data: { principal_amount: number; duration_months: number }) => request<any>('/banking-products/fd', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    fdLiquidate: (fdId: number) => request<any>(`/banking-products/fd/${fdId}/liquidate`, {
+      method: 'POST',
+    }),
+    offersList: () => request<any[]>('/banking-products/offers'),
   }
 };

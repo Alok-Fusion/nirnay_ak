@@ -39,6 +39,8 @@ class User(Base):
     audit_logs = relationship("AuditLog", back_populates="user")
     ledger_entries = relationship("LedgerEntry", back_populates="user")
     security_logs = relationship("SecurityLog", back_populates="user")
+    virtual_cards = relationship("VirtualCard", back_populates="user")
+    fixed_deposits = relationship("FixedDeposit", back_populates="user")
 
 class DigitalTwin(Base):
     __tablename__ = "digital_twins"
@@ -117,7 +119,7 @@ class LedgerEntry(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     type = Column(String, nullable=False) # CREDIT or DEBIT
-    category = Column(String, nullable=False) # SALARY, UPI_RECEIVE, BANK_TRANSFER, REFUND, P2P_RECEIVE, TRANSFER_OUT, P2P_SENT
+    category = Column(String, nullable=False) # SALARY, UPI_RECEIVE, BANK_TRANSFER, REFUND, P2P_RECEIVE, TRANSFER_OUT, P2P_SENT, FD_CREATE, FD_LIQUIDATE
     amount = Column(Float, nullable=False)
     balance_after = Column(Float, nullable=False)
     description = Column(String, nullable=False)
@@ -141,3 +143,37 @@ class SecurityLog(Base):
 
     # Relationships
     user = relationship("User", back_populates="security_logs")
+
+class VirtualCard(Base):
+    __tablename__ = "virtual_cards"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    card_number = Column(String(16), unique=True, index=True, nullable=False)
+    expiry_date = Column(String(5), nullable=False) # MM/YY
+    cvv = Column(String(3), nullable=False)
+    card_holder = Column(String, nullable=False)
+    status = Column(String, default="ACTIVE") # ACTIVE, FROZEN
+    card_type = Column(String, default="VISA_DEBIT") # VISA_DEBIT, MASTERCARD_PREMIUM
+    spend_limit = Column(Float, default=50000.0)
+    total_spent = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    user = relationship("User", back_populates="virtual_cards")
+
+class FixedDeposit(Base):
+    __tablename__ = "fixed_deposits"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    principal_amount = Column(Float, nullable=False)
+    interest_rate = Column(Float, nullable=False) # % per annum
+    duration_months = Column(Integer, nullable=False)
+    maturity_amount = Column(Float, nullable=False)
+    status = Column(String, default="ACTIVE") # ACTIVE, MATURED, LIQUIDATED
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    matures_at = Column(DateTime, nullable=False)
+
+    # Relationships
+    user = relationship("User", back_populates="fixed_deposits")

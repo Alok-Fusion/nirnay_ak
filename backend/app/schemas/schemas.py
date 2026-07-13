@@ -203,3 +203,54 @@ class UpdateLimitRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+# Banking Products (Cards, FDs, Offers)
+class VirtualCardCreate(BaseModel):
+    card_type: str # VISA_DEBIT, MASTERCARD_PREMIUM
+    spend_limit: float = Field(50000.0, gt=0)
+
+class VirtualCardOut(BaseModel):
+    id: int
+    user_id: int
+    card_number: str
+    expiry_date: str
+    cvv: str
+    card_holder: str
+    status: str
+    card_type: str
+    spend_limit: float
+    total_spent: float
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class CardLimitUpdate(BaseModel):
+    spend_limit: float = Field(..., gt=0)
+
+class FixedDepositCreate(BaseModel):
+    principal_amount: float = Field(..., gt=0)
+    duration_months: int = Field(..., ge=1, le=120)
+
+class FixedDepositOut(BaseModel):
+    id: int
+    user_id: int
+    principal_amount: float
+    interest_rate: float
+    duration_months: int
+    maturity_amount: float
+    status: str
+    created_at: datetime
+    matures_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class OfferOut(BaseModel):
+    id: str
+    title: str
+    description: str
+    reward_rate: str
+    category: str
+    unlocked: bool
+    unlock_score: float
