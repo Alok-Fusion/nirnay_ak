@@ -130,6 +130,9 @@ Every transaction evaluated by the cognitive layer goes through a consensus trac
 
 ### Neo-Banking Operations & Ledger System
 *   **Passbook Ledger**: All cash movements are logged inside a database Ledger containing credit/debit types, amount, snapshot balances, and description.
+*   **Virtual Card Generator**: Create custom Visa/Mastercard virtual cards with expiry date, CVV, toggleable freeze locks, and customized spending limits.
+*   **Term Fixed Deposits (FD)**: Lock funds inside term deposits for scaling annual interest return yields (up to 8.0%). Fully supports premature liquidations with interest penalties.
+*   **Personalized Integrity Rewards**: Unlocks cashback offers and discount vouchers (NordVPN, Amazon prime deals) dynamically scaled based on the user's Safety Integrity Score.
 *   **Direct P2P Routing**: Send funds instantly to other accounts via a 12-digit account number. Fetches and verifies beneficiary legal name in real-time.
 *   **Demo Balance Deposits**: Add mock funds instantly using UPI, Wire Transfer, Salary Credits, or Refund categories.
 *   **Statement Exports**: Export full ledger statements in `.csv` format for accounting or reporting.
