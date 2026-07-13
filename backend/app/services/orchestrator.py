@@ -46,12 +46,12 @@ class TransactionOrchestrator:
         
         # Convert local hours lookup if DB timezone has no timezone
         db_today_start = today_start.replace(tzinfo=None)
-        todays_approved = db.query(Transaction).filter(
+        from sqlalchemy import func
+        today_total = db.query(func.sum(Transaction.amount)).filter(
             Transaction.sender_id == sender_id,
             Transaction.status == "APPROVED",
             Transaction.timestamp >= db_today_start
-        ).all()
-        today_total = sum(tx.amount for tx in todays_approved)
+        ).scalar() or 0.0
         if today_total + amount > user.daily_transfer_limit:
             return {"error": f"Transaction rejected: Daily limit of ${user.daily_transfer_limit:,.2f} exceeded. Today's processed: ${today_total:,.2f}."}
 

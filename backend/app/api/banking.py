@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.models import User, LedgerEntry, Recipient, Transaction
@@ -7,8 +8,6 @@ from app.schemas.schemas import DepositRequest, P2PTransferRequest, LedgerEntryO
 from app.crud.crud import record_approved_transaction_ledger
 from app.services.orchestrator import TransactionOrchestrator
 from typing import List, Dict, Any
-from datetime import datetime, timezone
-import json
 
 router = APIRouter(prefix="/banking", tags=["Banking Operations"])
 orchestrator = TransactionOrchestrator()
@@ -20,7 +19,10 @@ def deposit_funds(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Deposit money to user account (credits balance and adds credit ledger entry)."""
+    """
+    Deposit money into user account.
+    Credits the account balance and records a CREDIT ledger entry.
+    """
     current_user.balance += req.amount
     db.add(current_user)
     db.commit()
@@ -61,18 +63,19 @@ def get_balance_breakdown(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Retrieve available balance and aggregate credit/debit metrics."""
-    credits_sum = db.query(LedgerEntry).filter(
+    """
+    Retrieve available balance and aggregate credit/debit metrics using
+    high-efficiency database aggregation instead of in-memory sums.
+    """
+    total_credits = db.query(func.sum(LedgerEntry.amount)).filter(
         LedgerEntry.user_id == current_user.id,
         LedgerEntry.type == "CREDIT"
-    ).all()
-    debits_sum = db.query(LedgerEntry).filter(
+    ).scalar() or 0.0
+
+    total_debits = db.query(func.sum(LedgerEntry.amount)).filter(
         LedgerEntry.user_id == current_user.id,
         LedgerEntry.type == "DEBIT"
-    ).all()
-
-    total_credits = sum(item.amount for item in credits_sum)
-    total_debits = sum(item.amount for item in debits_sum)
+    ).scalar() or 0.0
 
     return {
         "balance": current_user.balance,
@@ -116,7 +119,7 @@ def initiate_p2p_transfer(
     if recip_user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot transfer funds to yourself.")
 
-    # 2. Check or create Recipient link for sender
+    # 2. Check or create Recipient link for sender (modular helper logic inline)
     recip = db.query(Recipient).filter(
         Recipient.user_id == current_user.id,
         Recipient.account_number == req.recipient_account_number
